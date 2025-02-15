@@ -6,7 +6,7 @@ export default function Home() {
       <section className="space-y-8">
         {/* Hero Section */}
         <div className="text-center space-y-4">
-          <h1 className="text-gradient">Welcome to New Bizcontently</h1>
+          <h1 className="text-gradient">Welcome to Bizcontently</h1>
           <p className="text-xl">Transform your business content with AI</p>
           <div className="flex gap-4 justify-center mt-8">
             <button className="btn-primary">Get Started</button>

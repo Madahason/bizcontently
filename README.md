@@ -1,4 +1,4 @@
-# New Bizcontently
+# Bizcontently
 
 A modern full-stack application that leverages AI capabilities to enhance business content creation and management.
 
@@ -40,7 +40,7 @@ A modern full-stack application that leverages AI capabilities to enhance busine
 
 ```bash
 git clone <your-repo-url>
-cd new-bizcontently
+cd bizcontently
 ```
 
 2. Install dependencies
