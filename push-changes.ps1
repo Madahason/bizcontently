@@ -18,7 +18,7 @@ try {
         git push origin main
 
         Write-Host "`n✅ Changes have been pushed to GitHub successfully!" -ForegroundColor Green
-        Write-Host "📂 Repository: https://github.com/Madahason/bizcontently.git`n" -ForegroundColor Cyan
+        Write-Host "📂 Changes are now live on GitHub`n" -ForegroundColor Cyan
     } else {
         Write-Host "`n📝 No changes to commit. Working directory is clean.`n" -ForegroundColor Yellow
     }

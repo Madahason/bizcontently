@@ -22,5 +22,5 @@ git push origin main
 
 echo.
 echo Changes have been pushed to GitHub successfully!
-echo Repository: https://github.com/Madahason/bizcontently.git
+echo Changes are now live on GitHub
 echo. 
