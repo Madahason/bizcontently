@@ -22,7 +22,7 @@ export default function Home() {
             </div>
             <h3 className="mb-2">AI Content Generation</h3>
             <p>
-              Create engaging content with the power of artificial intelligence
+              Create engaging content with Bizcontently's AI-powered platform
             </p>
           </div>
 
@@ -31,7 +31,7 @@ export default function Home() {
               <span className="text-white text-2xl">🔒</span>
             </div>
             <h3 className="mb-2">Secure Storage</h3>
-            <p>Keep your content safe with our secure cloud storage</p>
+            <p>Your content is safe with Bizcontently's secure cloud storage</p>
           </div>
 
           <div className="card">
@@ -39,7 +39,9 @@ export default function Home() {
               <span className="text-white text-2xl">🚀</span>
             </div>
             <h3 className="mb-2">Real-time Updates</h3>
-            <p>Experience instant updates with our real-time database</p>
+            <p>
+              Experience instant updates with Bizcontently's real-time database
+            </p>
           </div>
         </div>
 
@@ -47,7 +49,7 @@ export default function Home() {
         <div className="mt-16 text-center p-8 rounded-2xl gradient-primary text-white">
           <h2 className="text-white mb-4">Ready to Transform Your Content?</h2>
           <p className="text-white/90 mb-8">
-            Join thousands of businesses already using our platform
+            Join thousands of businesses already using Bizcontently
           </p>
           <button className="btn-primary bg-white text-brand-secondary hover:bg-gray-100">
             Start Free Trial
@@ -56,7 +58,7 @@ export default function Home() {
 
         {/* Form Example */}
         <div className="max-w-md mx-auto mt-16">
-          <h2 className="mb-8">Contact Us</h2>
+          <h2 className="mb-8">Contact Bizcontently</h2>
           <form className="space-y-4">
             <div>
               <label htmlFor="name" className="label">
