@@ -1,15 +1,19 @@
-# Ansh & Riley Full-Stack Template
+# New Bizcontently
 
-This is a full-stack template project for Software Composers to create  applications with AI.
-
-## Getting started
-To create a new project, you go to `/paths`, choose from our list of Paths, and then use Cursor's Composer feature to quickly scaffold your project!
-
-You can also edit the Path's prompt template to be whatever you like!
+A modern full-stack application with AI capabilities.
 
 ## Technologies used
-This doesn't really matter, but is useful for the AI to understand more about this project. We are using the following technologies
+
+This project uses the following technologies:
+
 - React with Next.js 14 App Router
 - TailwindCSS
 - Firebase Auth, Storage, and Database
 - Multiple AI endpoints including OpenAI, Anthropic, and Replicate using Vercel's AI SDK
+
+## Getting Started
+
+1. Clone the repository
+2. Install dependencies with `npm install`
+3. Run the development server with `npm run dev`
+4. Open [http://localhost:3000](http://localhost:3000) in your browser
