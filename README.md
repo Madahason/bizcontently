@@ -1,6 +1,6 @@
-# Bizcontently
+# BizContently
 
-A modern full-stack application that leverages AI capabilities to enhance business content creation and management.
+AI-Powered Content Creation & Distribution Platform
 
 ## Features
 
@@ -37,44 +37,54 @@ A modern full-stack application that leverages AI capabilities to enhance busine
 ## Getting Started
 
 1. Clone the repository
-
-```bash
-git clone <your-repo-url>
-cd bizcontently
-```
-
-2. Install dependencies
+2. Install dependencies:
 
 ```bash
 npm install
+# or
+yarn install
 ```
 
-3. Set up environment variables
-   Create a `.env.local` file in the root directory with the following variables:
+3. Set up Firebase:
 
-```env
-# Firebase
-NEXT_PUBLIC_FIREBASE_API_KEY=
-NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=
-NEXT_PUBLIC_FIREBASE_PROJECT_ID=
-NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=
-NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=
-NEXT_PUBLIC_FIREBASE_APP_ID=
+   - Create a new project in the [Firebase Console](https://console.firebase.google.com)
+   - Enable Authentication (Email/Password and Google Sign-in)
+   - Create a web app in your Firebase project
+   - Copy the Firebase configuration from your project settings
+   - Create a `.env.local` file in the root directory with the following variables:
+     ```
+     NEXT_PUBLIC_FIREBASE_API_KEY=your_api_key
+     NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=your_auth_domain
+     NEXT_PUBLIC_FIREBASE_PROJECT_ID=your_project_id
+     NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=your_storage_bucket
+     NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=your_messaging_sender_id
+     NEXT_PUBLIC_FIREBASE_APP_ID=your_app_id
+     ```
 
-# AI Services
-OPENAI_API_KEY=
-ANTHROPIC_API_KEY=
-REPLICATE_API_KEY=
-DEEPGRAM_API_KEY=
-```
-
-4. Run the development server
+4. Run the development server:
 
 ```bash
 npm run dev
+# or
+yarn dev
 ```
 
-5. Open [http://localhost:3000](http://localhost:3000) in your browser
+Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+
+## Environment Variables
+
+Create a `.env.local` file in the root directory with the following variables:
+
+### Firebase Configuration
+
+Required for authentication and database functionality:
+
+- `NEXT_PUBLIC_FIREBASE_API_KEY`
+- `NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN`
+- `NEXT_PUBLIC_FIREBASE_PROJECT_ID`
+- `NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET`
+- `NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID`
+- `NEXT_PUBLIC_FIREBASE_APP_ID`
 
 ## Scripts
 

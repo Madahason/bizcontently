@@ -1,0 +1,16 @@
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background Circle -->
+  <circle cx="256" cy="256" r="248" fill="#7C3AED" />
+  
+  <!-- Letter B -->
+  <path
+    d="M256 128C238.327 128 224 142.327 224 160V352C224 369.673 238.327 384 256 384H304C339.346 384 368 355.346 368 320C368 293.49 352.51 271.163 330.154 262.319C345.49 253.163 356 236.51 356 217.6C356 182.254 327.346 128 292 128H256Z"
+    fill="white"
+  />
+  
+  <!-- Content Lines -->
+  <rect x="144" y="160" width="48" height="16" rx="8" fill="white" fillOpacity="0.5" />
+  <rect x="144" y="208" width="32" height="16" rx="8" fill="white" fillOpacity="0.5" />
+  <rect x="144" y="256" width="48" height="16" rx="8" fill="white" fillOpacity="0.5" />
+  <rect x="144" y="304" width="32" height="16" rx="8" fill="white" fillOpacity="0.5" />
+</svg> 

@@ -1,12 +1,19 @@
 import "./globals.css";
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
+import { Header } from "./components/Header";
+import { AuthProvider } from "@/lib/contexts/AuthContext";
 
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "Bizcontently",
-  description: "A modern full-stack application with AI capabilities",
+  title: "BizContently - AI-Powered Content Creation & Distribution",
+  description:
+    "Transform your content strategy with BizContently. Create, manage, and distribute content effortlessly using AI.",
+  icons: {
+    icon: "/favicon.ico",
+    apple: "/logo.png",
+  },
 };
 
 export default function RootLayout({
@@ -19,7 +26,10 @@ export default function RootLayout({
       <body
         className={`${inter.className} min-h-screen bg-brand-primary antialiased`}
       >
-        {children}
+        <AuthProvider>
+          <Header />
+          {children}
+        </AuthProvider>
       </body>
     </html>
   );
