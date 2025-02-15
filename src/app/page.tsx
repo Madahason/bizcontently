@@ -2,47 +2,100 @@ import Link from "next/link";
 
 export default function Home() {
   return (
-    <main className="flex min-h-screen flex-col items-center justify-between p-8">
-      <div>
-        <h2 className="text-2xl font-semibold text-center border p-4 font-mono rounded-md">
-          Get started by choosing a template path from the /paths/ folder.
-        </h2>
-      </div>
-      <div>
-        <h1 className="text-6xl font-bold text-center">Make anything you imagine 🪄</h1>
-        <h2 className="text-2xl text-center font-light text-gray-500 pt-4">
-          This whole page will be replaced when you run your template path.
-        </h2>
-      </div>
-      <div className="w-full grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="border rounded-lg p-6 hover:bg-gray-100 transition-colors">
-          <h3 className="text-xl font-semibold">AI Chat App</h3>
-          <p className="mt-2 text-sm text-gray-600">
-            An intelligent conversational app powered by AI models, featuring real-time responses
-            and seamless integration with Next.js and various AI providers.
-          </p>
+    <main className="container mx-auto px-4 py-8">
+      <section className="space-y-8">
+        {/* Hero Section */}
+        <div className="text-center space-y-4">
+          <h1 className="text-gradient">Welcome to New Bizcontently</h1>
+          <p className="text-xl">Transform your business content with AI</p>
+          <div className="flex gap-4 justify-center mt-8">
+            <button className="btn-primary">Get Started</button>
+            <button className="btn-outline">Learn More</button>
+          </div>
         </div>
-        <div className="border rounded-lg p-6 hover:bg-gray-100 transition-colors">
-          <h3 className="text-xl font-semibold">AI Image Generation App</h3>
-          <p className="mt-2 text-sm text-gray-600">
-            Create images from text prompts using AI, powered by the Replicate API and Next.js.
-          </p>
+
+        {/* Feature Cards */}
+        <div className="grid md:grid-cols-3 gap-6 mt-16">
+          <div className="card">
+            <div className="h-12 w-12 rounded-lg gradient-primary mb-4 flex items-center justify-center">
+              <span className="text-white text-2xl">✨</span>
+            </div>
+            <h3 className="mb-2">AI Content Generation</h3>
+            <p>
+              Create engaging content with the power of artificial intelligence
+            </p>
+          </div>
+
+          <div className="card">
+            <div className="h-12 w-12 rounded-lg bg-brand-secondary mb-4 flex items-center justify-center">
+              <span className="text-white text-2xl">🔒</span>
+            </div>
+            <h3 className="mb-2">Secure Storage</h3>
+            <p>Keep your content safe with our secure cloud storage</p>
+          </div>
+
+          <div className="card">
+            <div className="h-12 w-12 rounded-lg bg-brand-tertiary mb-4 flex items-center justify-center">
+              <span className="text-white text-2xl">🚀</span>
+            </div>
+            <h3 className="mb-2">Real-time Updates</h3>
+            <p>Experience instant updates with our real-time database</p>
+          </div>
         </div>
-        <div className="border rounded-lg p-6 hover:bg-gray-100 transition-colors">
-          <h3 className="text-xl font-semibold">Social Media App</h3>
-          <p className="mt-2 text-sm text-gray-600">
-            A feature-rich social platform with user profiles, posts, and interactions using
-            Firebase and Next.js.
+
+        {/* CTA Section */}
+        <div className="mt-16 text-center p-8 rounded-2xl gradient-primary text-white">
+          <h2 className="text-white mb-4">Ready to Transform Your Content?</h2>
+          <p className="text-white/90 mb-8">
+            Join thousands of businesses already using our platform
           </p>
+          <button className="btn-primary bg-white text-brand-secondary hover:bg-gray-100">
+            Start Free Trial
+          </button>
         </div>
-        <div className="border rounded-lg p-6 hover:bg-gray-100 transition-colors">
-          <h3 className="text-xl font-semibold">Voice Notes App</h3>
-          <p className="mt-2 text-sm text-gray-600">
-            A voice-based note-taking app with real-time transcription using Deepgram API, 
-            Firebase integration for storage, and a clean, simple interface built with Next.js.
-          </p>
+
+        {/* Form Example */}
+        <div className="max-w-md mx-auto mt-16">
+          <h2 className="mb-8">Contact Us</h2>
+          <form className="space-y-4">
+            <div>
+              <label htmlFor="name" className="label">
+                Name
+              </label>
+              <input
+                type="text"
+                id="name"
+                className="input"
+                placeholder="Your name"
+              />
+            </div>
+            <div>
+              <label htmlFor="email" className="label">
+                Email
+              </label>
+              <input
+                type="email"
+                id="email"
+                className="input"
+                placeholder="your@email.com"
+              />
+            </div>
+            <div>
+              <label htmlFor="message" className="label">
+                Message
+              </label>
+              <textarea
+                id="message"
+                className="input min-h-[120px]"
+                placeholder="Your message"
+              ></textarea>
+            </div>
+            <button type="submit" className="btn-primary w-full">
+              Send Message
+            </button>
+          </form>
         </div>
-      </div>
+      </section>
     </main>
   );
 }

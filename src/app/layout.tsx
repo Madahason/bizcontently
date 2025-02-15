@@ -1,5 +1,8 @@
 import "./globals.css";
 import type { Metadata } from "next";
+import { Inter } from "next/font/google";
+
+const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
   title: "New Bizcontently",
@@ -13,7 +16,11 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body
+        className={`${inter.className} min-h-screen bg-brand-primary antialiased`}
+      >
+        {children}
+      </body>
     </html>
   );
 }

@@ -4,30 +4,67 @@
 
 :root {
   --foreground-rgb: 0, 0, 0;
-  --background-start-rgb: 214, 219, 220;
-  --background-end-rgb: 255, 255, 255;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --foreground-rgb: 255, 255, 255;
-    --background-start-rgb: 0, 0, 0;
-    --background-end-rgb: 0, 0, 0;
-  }
+  --background: 255, 255, 255;
 }
 
 body {
   color: rgb(var(--foreground-rgb));
-  background: linear-gradient(
-      to bottom,
-      transparent,
-      rgb(var(--background-end-rgb))
-    )
-    rgb(var(--background-start-rgb));
+  background: rgb(var(--background));
+}
+
+@layer base {
+  h1 {
+    @apply text-4xl font-bold text-gray-900;
+  }
+  h2 {
+    @apply text-3xl font-semibold text-gray-900;
+  }
+  h3 {
+    @apply text-2xl font-semibold text-gray-900;
+  }
+  p {
+    @apply text-gray-700;
+  }
+}
+
+@layer components {
+  .btn {
+    @apply px-4 py-2 rounded-lg font-medium transition-colors duration-200;
+  }
+  .btn-primary {
+    @apply btn bg-brand-cta text-white hover:bg-opacity-90;
+  }
+  .btn-secondary {
+    @apply btn bg-brand-secondary text-white hover:bg-opacity-90;
+  }
+  .btn-outline {
+    @apply btn border-2 border-brand-secondary text-brand-secondary hover:bg-brand-secondary hover:text-white;
+  }
+  .nav-link {
+    @apply text-gray-600 hover:text-brand-secondary transition-colors duration-200;
+  }
+  .nav-link-active {
+    @apply text-brand-secondary font-medium;
+  }
+  .card {
+    @apply bg-white rounded-xl shadow-md p-6 hover:shadow-lg transition-shadow duration-200;
+  }
+  .input {
+    @apply w-full px-4 py-2 rounded-lg border border-gray-300 focus:border-brand-secondary focus:ring-1 focus:ring-brand-secondary focus:outline-none;
+  }
+  .label {
+    @apply block text-sm font-medium text-gray-700 mb-1;
+  }
 }
 
 @layer utilities {
   .text-balance {
     text-wrap: balance;
+  }
+  .gradient-primary {
+    @apply bg-gradient-to-r from-brand-secondary to-brand-tertiary;
+  }
+  .text-gradient {
+    @apply bg-clip-text text-transparent bg-gradient-to-r from-brand-secondary to-brand-tertiary;
   }
 }
