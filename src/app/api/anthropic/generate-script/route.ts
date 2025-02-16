@@ -71,11 +71,9 @@ async function generateScript(
       model: "claude-3-opus-20240229",
       max_tokens: 4000,
       temperature: 0.7,
+      system:
+        "You are an expert YouTube script writer and content strategist. Your task is to create a unique, engaging script that follows best practices for YouTube content while being completely original. Use the provided content analysis for inspiration but create something fresh and unique.",
       messages: [
-        {
-          role: "system",
-          content: `You are an expert YouTube script writer and content strategist. Your task is to create a unique, engaging script that follows best practices for YouTube content while being completely original. Use the provided content analysis for inspiration but create something fresh and unique.`,
-        },
         {
           role: "user",
           content: `Create a YouTube script about "${topic}" using this content analysis for inspiration. The script should be unique and not copy the original content.
@@ -117,12 +115,13 @@ Make the content unique while incorporating successful elements from the analysi
       ],
     });
 
-    if (!response.content[0].text) {
-      throw new Error("Empty response from Claude");
+    const content = response.content[0];
+    if (!content || typeof content !== "object" || !("text" in content)) {
+      throw new Error("Invalid response format from Claude");
     }
 
     // Parse the JSON response
-    const script = JSON.parse(response.content[0].text) as YouTubeScript;
+    const script = JSON.parse(content.text) as YouTubeScript;
     return script;
   } catch (error) {
     console.error("Script Generation Error:", error);
