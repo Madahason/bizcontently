@@ -11,7 +11,10 @@ export const metadata: Metadata = {
   description:
     "Transform your content strategy with BizContently. Create, manage, and distribute content effortlessly using AI.",
   icons: {
-    icon: "/favicon.ico",
+    icon: [
+      { url: "/favicon.ico", sizes: "any" },
+      { url: "/logo.png", type: "image/png" },
+    ],
     apple: "/logo.png",
   },
 };
