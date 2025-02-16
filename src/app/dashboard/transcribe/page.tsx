@@ -3,6 +3,44 @@
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 
+interface ContentAnalysis {
+  hooks: {
+    type: string;
+    timestamp: string;
+    description: string;
+    effectiveness: number;
+  }[];
+  callToAction: {
+    type: string;
+    timestamp: string;
+    text: string;
+    context: string;
+  }[];
+  keyTalkingPoints: {
+    topic: string;
+    timestamp: string;
+    keyPoints: string[];
+    duration: string;
+  }[];
+  contentStructure: {
+    section: string;
+    timestamp: string;
+    duration: string;
+    purpose: string;
+  }[];
+  engagementTechniques: {
+    technique: string;
+    timestamp: string;
+    description: string;
+    effectiveness: number;
+  }[];
+  recommendations: {
+    category: string;
+    suggestion: string;
+    reasoning: string;
+  }[];
+}
+
 interface TranscriptionResult {
   transcript: string;
   paragraphs: {
@@ -16,12 +54,28 @@ interface TranscriptionResult {
     text: string;
     type: string;
   }[];
-  speakers: {
+  timestamps: {
     text: string;
     start: number;
     end: number;
-    speaker: number;
   }[];
+}
+
+interface YouTubeScript {
+  title: string;
+  hook: string;
+  sections: {
+    type: string;
+    content: string;
+    notes: string;
+  }[];
+  callToAction: string;
+  thumbnailIdeas: string[];
+  metadata: {
+    description: string;
+    tags: string[];
+    category: string;
+  };
 }
 
 export default function TranscribePage() {
@@ -31,7 +85,13 @@ export default function TranscribePage() {
     useState<string>("");
   const [transcriptionResult, setTranscriptionResult] =
     useState<TranscriptionResult | null>(null);
+  const [contentAnalysis, setContentAnalysis] =
+    useState<ContentAnalysis | null>(null);
   const [transcriptionError, setTranscriptionError] = useState("");
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [isGeneratingScript, setIsGeneratingScript] = useState(false);
+  const [scriptResult, setScriptResult] = useState<YouTubeScript | null>(null);
+  const [scriptError, setScriptError] = useState("");
 
   // Try to paste URL from clipboard on mount
   useEffect(() => {
@@ -85,7 +145,7 @@ export default function TranscribePage() {
         summary: data.summary || "Summary not available",
         topics: data.topics || [],
         entities: data.entities || [],
-        speakers: data.speakers || [],
+        timestamps: data.timestamps || [],
       };
 
       setTranscriptionResult(formattedResult);
@@ -107,16 +167,73 @@ export default function TranscribePage() {
     }
   };
 
-  // Group speakers' text into paragraphs
-  const groupedSpeakers = transcriptionResult?.speakers.reduce<{
-    [key: number]: { text: string; start: number; end: number }[];
-  }>((acc, curr) => {
-    if (!acc[curr.speaker]) {
-      acc[curr.speaker] = [];
+  const analyzeContent = async () => {
+    if (!transcriptionResult) return;
+
+    setIsAnalyzing(true);
+    try {
+      const response = await fetch("/api/content-analysis", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          transcript: transcriptionResult.transcript,
+          timestamps: transcriptionResult.timestamps,
+        }),
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || "Failed to analyze content");
+      }
+
+      const analysis = await response.json();
+      setContentAnalysis(analysis);
+    } catch (err) {
+      console.error("Content analysis error:", err);
+      setTranscriptionError(
+        err instanceof Error ? err.message : "Failed to analyze content"
+      );
+    } finally {
+      setIsAnalyzing(false);
     }
-    acc[curr.speaker].push(curr);
-    return acc;
-  }, {});
+  };
+
+  const generateYouTubeScript = async () => {
+    if (!transcriptionResult || !contentAnalysis) return;
+
+    setIsGeneratingScript(true);
+    setScriptError("");
+    try {
+      const response = await fetch("/api/anthropic/generate-script", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          transcript: transcriptionResult.transcript,
+          contentAnalysis,
+          topic: transcriptionResult.topics[0] || "content creation",
+        }),
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || "Failed to generate script");
+      }
+
+      const script = await response.json();
+      setScriptResult(script);
+    } catch (err) {
+      console.error("Script generation error:", err);
+      setScriptError(
+        err instanceof Error ? err.message : "Failed to generate script"
+      );
+    } finally {
+      setIsGeneratingScript(false);
+    }
+  };
 
   return (
     <div className="space-y-8">
@@ -299,36 +416,411 @@ export default function TranscribePage() {
               </div>
             )}
 
-            {/* Speaker Timeline */}
-            {groupedSpeakers && Object.keys(groupedSpeakers).length > 1 && (
-              <div>
-                <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
-                  Speaker Timeline
-                </h3>
-                <div className="mt-2 space-y-4">
-                  {Object.entries(groupedSpeakers).map(
-                    ([speaker, utterances]) => (
-                      <div key={speaker} className="space-y-2">
-                        <h4 className="font-medium text-purple-600 dark:text-purple-400">
-                          Speaker {parseInt(speaker) + 1}
-                        </h4>
-                        {utterances.map((utterance, index) => (
+            {/* Content Analysis Button */}
+            {!contentAnalysis && !isAnalyzing && (
+              <div className="flex justify-center pt-4">
+                <button
+                  onClick={analyzeContent}
+                  className="inline-flex items-center rounded-lg bg-purple-600 px-4 py-2 text-sm font-medium text-white hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 disabled:opacity-50 dark:bg-purple-500 dark:hover:bg-purple-400"
+                >
+                  Analyze Content Structure
+                </button>
+              </div>
+            )}
+
+            {/* Analysis Loading */}
+            {isAnalyzing && (
+              <div className="flex items-center justify-center space-x-2 pt-4">
+                <div className="h-4 w-4 animate-spin rounded-full border-2 border-purple-500 border-t-transparent"></div>
+                <span className="text-gray-600 dark:text-gray-400">
+                  Analyzing content structure...
+                </span>
+              </div>
+            )}
+
+            {/* Content Analysis Results */}
+            {contentAnalysis && (
+              <div className="space-y-8 border-t border-gray-200 pt-8 dark:border-gray-700">
+                {/* Hooks */}
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+                    Hooks & Attention Grabbers
+                  </h3>
+                  <div className="mt-4 space-y-4">
+                    {contentAnalysis.hooks.map((hook, index) => (
+                      <div
+                        key={index}
+                        className="rounded-lg bg-gray-50 p-4 dark:bg-gray-900/50"
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="font-medium text-purple-600 dark:text-purple-400">
+                            {hook.type}
+                          </span>
+                          <span className="text-sm text-gray-500 dark:text-gray-400">
+                            {hook.timestamp}
+                          </span>
+                        </div>
+                        <p className="mt-2 text-gray-600 dark:text-gray-400">
+                          {hook.description}
+                        </p>
+                        <div className="mt-2 flex items-center">
+                          <span className="text-sm text-gray-500 dark:text-gray-400">
+                            Effectiveness:
+                          </span>
+                          <div className="ml-2 h-2 w-24 rounded-full bg-gray-200 dark:bg-gray-700">
+                            <div
+                              className="h-2 rounded-full bg-purple-500"
+                              style={{
+                                width: `${(hook.effectiveness / 10) * 100}%`,
+                              }}
+                            ></div>
+                          </div>
+                          <span className="ml-2 text-sm font-medium text-gray-600 dark:text-gray-400">
+                            {hook.effectiveness}/10
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Call-to-Actions */}
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+                    Call-to-Actions
+                  </h3>
+                  <div className="mt-4 space-y-4">
+                    {contentAnalysis.callToAction.map((cta, index) => (
+                      <div
+                        key={index}
+                        className="rounded-lg bg-gray-50 p-4 dark:bg-gray-900/50"
+                      >
+                        <div className="flex items-center justify-between">
+                          <span
+                            className={`rounded-full px-2 py-1 text-sm font-medium ${
+                              cta.type === "explicit"
+                                ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"
+                                : "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400"
+                            }`}
+                          >
+                            {cta.type}
+                          </span>
+                          <span className="text-sm text-gray-500 dark:text-gray-400">
+                            {cta.timestamp}
+                          </span>
+                        </div>
+                        <p className="mt-2 font-medium text-gray-900 dark:text-white">
+                          "{cta.text}"
+                        </p>
+                        <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
+                          {cta.context}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Key Talking Points */}
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+                    Key Talking Points
+                  </h3>
+                  <div className="mt-4 space-y-4">
+                    {contentAnalysis.keyTalkingPoints.map((point, index) => (
+                      <div
+                        key={index}
+                        className="rounded-lg bg-gray-50 p-4 dark:bg-gray-900/50"
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="font-medium text-gray-900 dark:text-white">
+                            {point.topic}
+                          </span>
+                          <div className="flex items-center space-x-2 text-sm text-gray-500 dark:text-gray-400">
+                            <span>{point.timestamp}</span>
+                            <span>({point.duration})</span>
+                          </div>
+                        </div>
+                        <ul className="mt-2 list-inside list-disc space-y-1 text-gray-600 dark:text-gray-400">
+                          {point.keyPoints.map((keyPoint, idx) => (
+                            <li key={idx}>{keyPoint}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Content Structure */}
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+                    Content Structure
+                  </h3>
+                  <div className="mt-4">
+                    <div className="relative">
+                      {contentAnalysis.contentStructure.map(
+                        (section, index) => (
                           <div
                             key={index}
-                            className="rounded-lg bg-gray-50 p-3 dark:bg-gray-900/50"
+                            className="mb-4 flex items-start space-x-4"
                           >
-                            <div className="mb-1 text-sm text-gray-500 dark:text-gray-400">
-                              {Math.floor(utterance.start)}s -{" "}
-                              {Math.floor(utterance.end)}s
+                            <div className="flex-shrink-0">
+                              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-purple-100 text-purple-600 dark:bg-purple-900/30 dark:text-purple-400">
+                                {index + 1}
+                              </div>
                             </div>
-                            <p className="text-gray-600 dark:text-gray-400">
-                              {utterance.text}
-                            </p>
+                            <div className="flex-grow rounded-lg bg-gray-50 p-4 dark:bg-gray-900/50">
+                              <div className="flex items-center justify-between">
+                                <span className="font-medium text-gray-900 dark:text-white">
+                                  {section.section}
+                                </span>
+                                <div className="flex items-center space-x-2 text-sm text-gray-500 dark:text-gray-400">
+                                  <span>{section.timestamp}</span>
+                                  <span>({section.duration})</span>
+                                </div>
+                              </div>
+                              <p className="mt-2 text-gray-600 dark:text-gray-400">
+                                {section.purpose}
+                              </p>
+                            </div>
                           </div>
+                        )
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Engagement Techniques */}
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+                    Engagement Techniques
+                  </h3>
+                  <div className="mt-4 grid gap-4 md:grid-cols-2">
+                    {contentAnalysis.engagementTechniques.map(
+                      (technique, index) => (
+                        <div
+                          key={index}
+                          className="rounded-lg bg-gray-50 p-4 dark:bg-gray-900/50"
+                        >
+                          <div className="flex items-center justify-between">
+                            <span className="font-medium text-purple-600 dark:text-purple-400">
+                              {technique.technique}
+                            </span>
+                            <span className="text-sm text-gray-500 dark:text-gray-400">
+                              {technique.timestamp}
+                            </span>
+                          </div>
+                          <p className="mt-2 text-gray-600 dark:text-gray-400">
+                            {technique.description}
+                          </p>
+                          <div className="mt-2 flex items-center">
+                            <span className="text-sm text-gray-500 dark:text-gray-400">
+                              Effectiveness:
+                            </span>
+                            <div className="ml-2 h-2 w-24 rounded-full bg-gray-200 dark:bg-gray-700">
+                              <div
+                                className="h-2 rounded-full bg-purple-500"
+                                style={{
+                                  width: `${
+                                    (technique.effectiveness / 10) * 100
+                                  }%`,
+                                }}
+                              ></div>
+                            </div>
+                            <span className="ml-2 text-sm font-medium text-gray-600 dark:text-gray-400">
+                              {technique.effectiveness}/10
+                            </span>
+                          </div>
+                        </div>
+                      )
+                    )}
+                  </div>
+                </div>
+
+                {/* Recommendations */}
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+                    Strategic Recommendations
+                  </h3>
+                  <div className="mt-4 grid gap-4 md:grid-cols-2">
+                    {contentAnalysis.recommendations.map((rec, index) => (
+                      <div
+                        key={index}
+                        className="rounded-lg bg-gray-50 p-4 dark:bg-gray-900/50"
+                      >
+                        <div className="mb-2 inline-block rounded-full bg-purple-100 px-2 py-1 text-sm font-medium text-purple-600 dark:bg-purple-900/30 dark:text-purple-400">
+                          {rec.category}
+                        </div>
+                        <p className="font-medium text-gray-900 dark:text-white">
+                          {rec.suggestion}
+                        </p>
+                        <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">
+                          {rec.reasoning}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Add after Content Analysis Results */}
+            {contentAnalysis && !scriptResult && !isGeneratingScript && (
+              <div className="flex justify-center pt-4">
+                <button
+                  onClick={generateYouTubeScript}
+                  className="inline-flex items-center rounded-lg bg-purple-600 px-4 py-2 text-sm font-medium text-white hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 disabled:opacity-50 dark:bg-purple-500 dark:hover:bg-purple-400"
+                >
+                  Generate YouTube Script
+                </button>
+              </div>
+            )}
+
+            {/* Script Generation Loading */}
+            {isGeneratingScript && (
+              <div className="flex items-center justify-center space-x-2 pt-4">
+                <div className="h-4 w-4 animate-spin rounded-full border-2 border-purple-500 border-t-transparent"></div>
+                <span className="text-gray-600 dark:text-gray-400">
+                  Generating YouTube script...
+                </span>
+              </div>
+            )}
+
+            {/* Script Error */}
+            {scriptError && (
+              <div className="rounded-lg bg-red-50 p-4 text-red-700 dark:bg-red-900/30 dark:text-red-400">
+                {scriptError}
+              </div>
+            )}
+
+            {/* Script Results */}
+            {scriptResult && (
+              <div className="space-y-8 border-t border-gray-200 pt-8 dark:border-gray-700">
+                <h2 className="text-xl font-bold text-gray-900 dark:text-white">
+                  YouTube Script
+                </h2>
+
+                {/* Title */}
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+                    Title Options
+                  </h3>
+                  <p className="mt-2 text-lg font-medium text-purple-600 dark:text-purple-400">
+                    {scriptResult.title}
+                  </p>
+                </div>
+
+                {/* Hook */}
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+                    Opening Hook
+                  </h3>
+                  <div className="mt-2 rounded-lg bg-gray-50 p-4 dark:bg-gray-900/50">
+                    <p className="text-gray-600 dark:text-gray-400">
+                      {scriptResult.hook}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Main Content */}
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+                    Main Content
+                  </h3>
+                  <div className="mt-4 space-y-6">
+                    {scriptResult.sections.map((section, index) => (
+                      <div
+                        key={index}
+                        className="rounded-lg bg-gray-50 p-4 dark:bg-gray-900/50"
+                      >
+                        <div className="mb-2 inline-block rounded-full bg-purple-100 px-2 py-1 text-sm font-medium text-purple-600 dark:bg-purple-900/30 dark:text-purple-400">
+                          {section.type}
+                        </div>
+                        <div className="mt-2 space-y-2">
+                          <p className="text-gray-600 dark:text-gray-400">
+                            {section.content}
+                          </p>
+                          {section.notes && (
+                            <p className="text-sm italic text-gray-500 dark:text-gray-400">
+                              Note: {section.notes}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Call to Action */}
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+                    Call to Action
+                  </h3>
+                  <div className="mt-2 rounded-lg bg-gray-50 p-4 dark:bg-gray-900/50">
+                    <p className="text-gray-600 dark:text-gray-400">
+                      {scriptResult.callToAction}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Thumbnail Ideas */}
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+                    Thumbnail Ideas
+                  </h3>
+                  <div className="mt-2 space-y-2">
+                    {scriptResult.thumbnailIdeas.map((idea, index) => (
+                      <div
+                        key={index}
+                        className="rounded-lg bg-gray-50 p-4 dark:bg-gray-900/50"
+                      >
+                        <p className="text-gray-600 dark:text-gray-400">
+                          {idea}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Metadata */}
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+                    Video Metadata
+                  </h3>
+                  <div className="mt-4 space-y-4">
+                    <div>
+                      <h4 className="font-medium text-gray-900 dark:text-white">
+                        Description
+                      </h4>
+                      <div className="mt-2 rounded-lg bg-gray-50 p-4 dark:bg-gray-900/50">
+                        <p className="whitespace-pre-wrap text-gray-600 dark:text-gray-400">
+                          {scriptResult.metadata.description}
+                        </p>
+                      </div>
+                    </div>
+                    <div>
+                      <h4 className="font-medium text-gray-900 dark:text-white">
+                        Tags
+                      </h4>
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        {scriptResult.metadata.tags.map((tag, index) => (
+                          <span
+                            key={index}
+                            className="rounded-full bg-gray-100 px-3 py-1 text-sm text-gray-600 dark:bg-gray-800 dark:text-gray-400"
+                          >
+                            {tag}
+                          </span>
                         ))}
                       </div>
-                    )
-                  )}
+                    </div>
+                    <div>
+                      <h4 className="font-medium text-gray-900 dark:text-white">
+                        Category
+                      </h4>
+                      <p className="mt-2 text-gray-600 dark:text-gray-400">
+                        {scriptResult.metadata.category}
+                      </p>
+                    </div>
+                  </div>
                 </div>
               </div>
             )}
