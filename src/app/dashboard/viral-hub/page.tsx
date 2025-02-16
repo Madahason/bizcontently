@@ -56,14 +56,18 @@ export default function ViralHubPage() {
   const [error, setError] = useState("");
   const [selectedVideo, setSelectedVideo] = useState<Video | null>(null);
   const [copySuccess, setCopySuccess] = useState<string | null>(null);
+  const [debugInfo, setDebugInfo] = useState<string>("");
 
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSearching(true);
     setError("");
     setVideos([]);
+    setDebugInfo("");
 
     try {
+      console.log("Searching for:", searchTerm);
+
       const response = await fetch("/api/youtube/viral-search", {
         method: "POST",
         headers: {
@@ -73,13 +77,26 @@ export default function ViralHubPage() {
       });
 
       const data = await response.json();
+      console.log("Search response:", data);
 
       if (!response.ok) {
         throw new Error(data.error || "Failed to fetch viral videos");
       }
 
+      if (!data.videos || !Array.isArray(data.videos)) {
+        setDebugInfo(
+          `Invalid response format. Received: ${JSON.stringify(data)}`
+        );
+        throw new Error("Invalid response format from server");
+      }
+
+      if (data.videos.length === 0) {
+        setDebugInfo("No viral videos found for this search term");
+      }
+
       setVideos(data.videos);
     } catch (err) {
+      console.error("Search error:", err);
       setError(err instanceof Error ? err.message : "An error occurred");
     } finally {
       setIsSearching(false);
@@ -89,23 +106,35 @@ export default function ViralHubPage() {
   const handleAnalyzeClick = async (videoId: string, e: React.MouseEvent) => {
     e.stopPropagation();
 
-    // Construct the video URL
-    const videoUrl = `https://www.youtube.com/watch?v=${videoId}`;
-
     try {
-      // Copy to clipboard
+      // Copy URL to clipboard
+      const videoUrl = `https://www.youtube.com/watch?v=${videoId}`;
       await navigator.clipboard.writeText(videoUrl);
       setCopySuccess(videoId);
 
       // Clear success message after 2 seconds
       setTimeout(() => setCopySuccess(null), 2000);
 
-      // Navigate to transcribe page
-      router.push("/dashboard/transcribe");
+      // Navigate to transcribe page for analysis
+      router.push(`/dashboard/transcribe?videoId=${videoId}`);
     } catch (err) {
-      console.error("Failed to copy URL:", err);
-      // If clipboard fails, just navigate
-      router.push("/dashboard/transcribe");
+      console.error("Failed to handle video analysis:", err);
+      setError("Failed to start video analysis. Please try again.");
+    }
+  };
+
+  const calculateViralScore = (metrics: ViralMetrics) => {
+    const subscriberRatio = parseFloat(metrics.viewsToSubscriberRatio);
+    const averageRatio = parseFloat(metrics.viewsToAverageRatio);
+
+    // If either ratio is exceptionally high, it indicates viral potential
+    const viralScore = Math.max(subscriberRatio, averageRatio);
+
+    // Format the score with appropriate precision
+    if (viralScore >= 10) {
+      return viralScore.toFixed(0) + "x";
+    } else {
+      return viralScore.toFixed(1) + "x";
     }
   };
 
@@ -189,10 +218,24 @@ export default function ViralHubPage() {
         </form>
       </div>
 
+      {/* Debug Info */}
+      {debugInfo && (
+        <div className="rounded-lg bg-blue-50 p-4 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400">
+          {debugInfo}
+        </div>
+      )}
+
       {/* Error Message */}
       {error && (
         <div className="rounded-lg bg-red-50 p-4 text-red-700 dark:bg-red-900/30 dark:text-red-400">
           {error}
+        </div>
+      )}
+
+      {/* Results Count */}
+      {videos.length > 0 && (
+        <div className="text-sm text-gray-600 dark:text-gray-400">
+          Found {videos.length} viral videos
         </div>
       )}
 
@@ -269,6 +312,7 @@ export default function ViralHubPage() {
                     <button
                       onClick={(e) => handleAnalyzeClick(video.id, e)}
                       className="rounded-full bg-purple-600 p-3 text-white opacity-0 transition-all hover:bg-purple-700 group-hover:opacity-100 disabled:bg-purple-400"
+                      title="Analyze Video"
                     >
                       {copySuccess === video.id ? (
                         <svg
@@ -295,7 +339,7 @@ export default function ViralHubPage() {
                             strokeLinecap="round"
                             strokeLinejoin="round"
                             strokeWidth={2}
-                            d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                            d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"
                           />
                         </svg>
                       )}
@@ -347,12 +391,18 @@ export default function ViralHubPage() {
                       <p className="font-medium text-gray-900 dark:text-white">
                         Viral Score
                       </p>
-                      <p className="text-purple-600 dark:text-purple-400">
-                        {Math.max(
-                          parseFloat(video.viralMetrics.viewsToSubscriberRatio),
-                          parseFloat(video.viralMetrics.viewsToAverageRatio)
-                        ).toFixed(1)}
-                        x
+                      <p
+                        className={`${
+                          parseFloat(video.viralMetrics.viewsToAverageRatio) >
+                            5 ||
+                          parseFloat(
+                            video.viralMetrics.viewsToSubscriberRatio
+                          ) > 5
+                            ? "text-green-600 dark:text-green-400 font-semibold"
+                            : "text-purple-600 dark:text-purple-400"
+                        }`}
+                      >
+                        {calculateViralScore(video.viralMetrics)}
                       </p>
                     </div>
                   </div>

@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import { useRouter } from "next/navigation";
 
 interface ContentAnalysis {
   hooks: {
@@ -79,6 +80,7 @@ interface YouTubeScript {
 }
 
 export default function TranscribePage() {
+  const router = useRouter();
   const [videoUrl, setVideoUrl] = useState("");
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [transcriptionProgress, setTranscriptionProgress] =
@@ -233,6 +235,17 @@ export default function TranscribePage() {
     } finally {
       setIsGeneratingScript(false);
     }
+  };
+
+  const handleCreateVideo = () => {
+    if (!scriptResult) return;
+
+    // Navigate to create-video page with the script data
+    router.push(
+      `/dashboard/create-video?script=${encodeURIComponent(
+        JSON.stringify(scriptResult)
+      )}`
+    );
   };
 
   return (
@@ -695,131 +708,81 @@ export default function TranscribePage() {
             {/* Script Results */}
             {scriptResult && (
               <div className="space-y-8 border-t border-gray-200 pt-8 dark:border-gray-700">
-                <h2 className="text-xl font-bold text-gray-900 dark:text-white">
-                  YouTube Script
-                </h2>
-
-                {/* Title */}
-                <div>
-                  <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
-                    Title Options
-                  </h3>
-                  <p className="mt-2 text-lg font-medium text-purple-600 dark:text-purple-400">
-                    {scriptResult.title}
-                  </p>
+                <div className="mb-4 flex items-center justify-between">
+                  <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
+                    Generated YouTube Script
+                  </h2>
+                  <button
+                    onClick={handleCreateVideo}
+                    className="inline-flex items-center rounded-lg bg-purple-600 px-4 py-2 text-sm font-medium text-white hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 dark:bg-purple-500 dark:hover:bg-purple-400"
+                  >
+                    <svg
+                      className="mr-2 h-5 w-5"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"
+                      />
+                    </svg>
+                    Create Video
+                  </button>
                 </div>
 
-                {/* Hook */}
-                <div>
-                  <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
-                    Opening Hook
-                  </h3>
-                  <div className="mt-2 rounded-lg bg-gray-50 p-4 dark:bg-gray-900/50">
+                {/* Script Content */}
+                <div className="space-y-4">
+                  <div>
+                    <h3 className="font-medium text-gray-900 dark:text-white">
+                      Title
+                    </h3>
+                    <p className="text-gray-600 dark:text-gray-400">
+                      {scriptResult.title}
+                    </p>
+                  </div>
+                  <div>
+                    <h3 className="font-medium text-gray-900 dark:text-white">
+                      Hook
+                    </h3>
                     <p className="text-gray-600 dark:text-gray-400">
                       {scriptResult.hook}
                     </p>
                   </div>
-                </div>
-
-                {/* Main Content */}
-                <div>
-                  <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
-                    Main Content
-                  </h3>
-                  <div className="mt-4 space-y-6">
-                    {scriptResult.sections.map((section, index) => (
-                      <div
-                        key={index}
-                        className="rounded-lg bg-gray-50 p-4 dark:bg-gray-900/50"
-                      >
-                        <div className="mb-2 inline-block rounded-full bg-purple-100 px-2 py-1 text-sm font-medium text-purple-600 dark:bg-purple-900/30 dark:text-purple-400">
-                          {section.type}
-                        </div>
-                        <div className="mt-2 space-y-2">
-                          <p className="text-gray-600 dark:text-gray-400">
+                  <div>
+                    <h3 className="font-medium text-gray-900 dark:text-white">
+                      Sections
+                    </h3>
+                    <div className="space-y-2">
+                      {scriptResult.sections.map((section, index) => (
+                        <div
+                          key={index}
+                          className="rounded-lg bg-gray-50 p-4 dark:bg-gray-900/50"
+                        >
+                          <h4 className="font-medium text-gray-900 dark:text-white">
+                            {section.type}
+                          </h4>
+                          <p className="mt-1 text-gray-600 dark:text-gray-400">
                             {section.content}
                           </p>
                           {section.notes && (
-                            <p className="text-sm italic text-gray-500 dark:text-gray-400">
+                            <p className="mt-2 text-sm text-purple-600 dark:text-purple-400">
                               Note: {section.notes}
                             </p>
                           )}
                         </div>
-                      </div>
-                    ))}
+                      ))}
+                    </div>
                   </div>
-                </div>
-
-                {/* Call to Action */}
-                <div>
-                  <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
-                    Call to Action
-                  </h3>
-                  <div className="mt-2 rounded-lg bg-gray-50 p-4 dark:bg-gray-900/50">
+                  <div>
+                    <h3 className="font-medium text-gray-900 dark:text-white">
+                      Call to Action
+                    </h3>
                     <p className="text-gray-600 dark:text-gray-400">
                       {scriptResult.callToAction}
                     </p>
-                  </div>
-                </div>
-
-                {/* Thumbnail Ideas */}
-                <div>
-                  <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
-                    Thumbnail Ideas
-                  </h3>
-                  <div className="mt-2 space-y-2">
-                    {scriptResult.thumbnailIdeas.map((idea, index) => (
-                      <div
-                        key={index}
-                        className="rounded-lg bg-gray-50 p-4 dark:bg-gray-900/50"
-                      >
-                        <p className="text-gray-600 dark:text-gray-400">
-                          {idea}
-                        </p>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Metadata */}
-                <div>
-                  <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
-                    Video Metadata
-                  </h3>
-                  <div className="mt-4 space-y-4">
-                    <div>
-                      <h4 className="font-medium text-gray-900 dark:text-white">
-                        Description
-                      </h4>
-                      <div className="mt-2 rounded-lg bg-gray-50 p-4 dark:bg-gray-900/50">
-                        <p className="whitespace-pre-wrap text-gray-600 dark:text-gray-400">
-                          {scriptResult.metadata.description}
-                        </p>
-                      </div>
-                    </div>
-                    <div>
-                      <h4 className="font-medium text-gray-900 dark:text-white">
-                        Tags
-                      </h4>
-                      <div className="mt-2 flex flex-wrap gap-2">
-                        {scriptResult.metadata.tags.map((tag, index) => (
-                          <span
-                            key={index}
-                            className="rounded-full bg-gray-100 px-3 py-1 text-sm text-gray-600 dark:bg-gray-800 dark:text-gray-400"
-                          >
-                            {tag}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                    <div>
-                      <h4 className="font-medium text-gray-900 dark:text-white">
-                        Category
-                      </h4>
-                      <p className="mt-2 text-gray-600 dark:text-gray-400">
-                        {scriptResult.metadata.category}
-                      </p>
-                    </div>
                   </div>
                 </div>
               </div>

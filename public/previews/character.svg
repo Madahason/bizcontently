@@ -1,0 +1,44 @@
+<svg width="1280" height="720" viewBox="0 0 1280 720" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background -->
+  <rect width="1280" height="720" fill="#F7FAFC"/>
+  
+  <!-- Character -->
+  <g transform="translate(640, 360)">
+    <!-- Body -->
+    <circle cx="0" cy="-100" r="50" fill="#ED8936"/> <!-- Head -->
+    <rect x="-40" y="-50" width="80" height="100" rx="20" fill="#ED8936"/> <!-- Torso -->
+    
+    <!-- Arms -->
+    <g stroke="#ED8936" stroke-width="30" stroke-linecap="round">
+      <line x1="-40" y1="-20" x2="-90" y2="20"/>
+      <line x1="40" y1="-20" x2="90" y2="20"/>
+    </g>
+    
+    <!-- Legs -->
+    <g stroke="#ED8936" stroke-width="30" stroke-linecap="round">
+      <line x1="-20" y1="50" x2="-30" y2="120"/>
+      <line x1="20" y1="50" x2="30" y2="120"/>
+    </g>
+    
+    <!-- Face -->
+    <g fill="#1A202C">
+      <circle cx="-15" cy="-110" r="5"/> <!-- Left eye -->
+      <circle cx="15" cy="-110" r="5"/> <!-- Right eye -->
+      <path d="M -10 -90 Q 0 -80 10 -90" stroke="#1A202C" stroke-width="3" fill="none"/> <!-- Smile -->
+    </g>
+  </g>
+  
+  <!-- Speech bubble -->
+  <g transform="translate(840, 260)">
+    <path d="M -100 0 L 100 0 L 100 80 L 20 80 L 0 100 L -20 80 L -100 80 Z" fill="white" stroke="#4A5568" stroke-width="2"/>
+    <text x="0" y="45" font-family="Arial" font-size="24" fill="#4A5568" text-anchor="middle">
+      Hello!
+    </text>
+  </g>
+  
+  <!-- Animation hints -->
+  <g stroke="#4A5568" stroke-width="2" stroke-dasharray="5,5" opacity="0.5">
+    <path d="M 640 260 C 660 240, 680 240, 700 260"/>
+    <path d="M 580 380 C 600 400, 620 400, 640 380"/>
+  </g>
+</svg> 

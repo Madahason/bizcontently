@@ -1,0 +1,30 @@
+<svg width="1280" height="720" viewBox="0 0 1280 720" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Dark background -->
+  <rect width="1280" height="720" fill="#1A1A1A"/>
+  
+  <!-- Animated text hints -->
+  <g transform="translate(640, 360)">
+    <!-- Main text -->
+    <text x="0" y="0" font-family="Arial" font-size="72" fill="white" text-anchor="middle">
+      KINETIC
+    </text>
+    
+    <!-- Motion lines -->
+    <g stroke="white" stroke-width="2" opacity="0.6">
+      <line x1="-200" y1="-50" x2="200" y2="-50" stroke-dasharray="10,10"/>
+      <line x1="-200" y1="50" x2="200" y2="50" stroke-dasharray="10,10"/>
+    </g>
+    
+    <!-- Animated elements -->
+    <g fill="#6B46C1" opacity="0.8">
+      <circle cx="-150" cy="0" r="20"/>
+      <rect x="100" y="-20" width="40" height="40"/>
+      <polygon points="0,-80 20,-40 -20,-40"/>
+    </g>
+  </g>
+  
+  <!-- Typography elements -->
+  <text x="640" y="500" font-family="Arial" font-size="36" fill="#E9D8FD" text-anchor="middle">
+    Dynamic Text Animation
+  </text>
+</svg> 
