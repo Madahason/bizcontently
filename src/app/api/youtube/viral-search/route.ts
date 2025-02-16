@@ -31,19 +31,31 @@ export async function POST(req: Request) {
     }
 
     // Get video statistics for all videos
-    const videoIds = searchResponse.data.items.map((item) => item.id?.videoId);
+    const videoIds = searchResponse.data.items
+      .map((item) => item.id?.videoId)
+      .filter((id): id is string => id !== undefined && id !== null);
+
+    if (videoIds.length === 0) {
+      return NextResponse.json({ videos: [] });
+    }
+
     const videoStatsResponse = await youtube.videos.list({
       part: ["statistics"],
       id: videoIds,
     });
 
     // Get channel statistics for all channels
-    const channelIds = searchResponse.data.items.map(
-      (item) => item.snippet?.channelId
-    );
+    const channelIds = searchResponse.data.items
+      .map((item) => item.snippet?.channelId)
+      .filter((id): id is string => id !== undefined && id !== null);
+
+    if (channelIds.length === 0) {
+      return NextResponse.json({ videos: [] });
+    }
+
     const channelStatsResponse = await youtube.channels.list({
       part: ["statistics"],
-      id: [...new Set(channelIds)], // Remove duplicates
+      id: channelIds,
     });
 
     // Create a map of channel stats for quick lookup
@@ -58,9 +70,11 @@ export async function POST(req: Request) {
     const videos = searchResponse.data.items
       .map((item, index) => {
         const videoStats = videoStatsResponse.data.items?.[index]?.statistics;
-        const channelStats = channelStatsMap.get(item.snippet?.channelId);
+        const channelStats = item.snippet?.channelId
+          ? channelStatsMap.get(item.snippet.channelId)
+          : null;
 
-        if (!videoStats || !channelStats) return null;
+        if (!videoStats || !channelStats || !item.id?.videoId) return null;
 
         const viewCount = parseInt(videoStats.viewCount || "0");
         const subscriberCount = parseInt(channelStats.subscriberCount || "0");
@@ -74,7 +88,7 @@ export async function POST(req: Request) {
         if (!isViral) return null;
 
         return {
-          id: item.id?.videoId,
+          id: item.id.videoId,
           title: item.snippet?.title,
           thumbnail: item.snippet?.thumbnails?.high?.url,
           channelTitle: item.snippet?.channelTitle,
@@ -92,7 +106,7 @@ export async function POST(req: Request) {
           },
         };
       })
-      .filter(Boolean); // Remove null entries
+      .filter((video): video is NonNullable<typeof video> => video !== null);
 
     return NextResponse.json({ videos });
   } catch (error) {
