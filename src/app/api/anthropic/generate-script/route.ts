@@ -72,11 +72,11 @@ async function generateScript(
       max_tokens: 4000,
       temperature: 0.7,
       system:
-        "You are an expert YouTube script writer and content strategist. Your task is to create a unique, engaging script that follows best practices for YouTube content while being completely original. Use the provided content analysis for inspiration but create something fresh and unique.",
+        "You are an expert YouTube script writer and content strategist. Your task is to create a unique, engaging script that follows best practices for YouTube content while being completely original. You must respond with ONLY valid JSON - no other text before or after. The JSON must exactly match the specified structure.",
       messages: [
         {
           role: "user",
-          content: `Create a YouTube script about "${topic}" using this content analysis for inspiration. The script should be unique and not copy the original content.
+          content: `Create a YouTube script about "${topic}" using this content analysis for inspiration. Respond with ONLY valid JSON - no other text, no explanations, no markdown formatting.
 
 Content Analysis:
 ${JSON.stringify(contentAnalysis, null, 2)}
@@ -84,15 +84,7 @@ ${JSON.stringify(contentAnalysis, null, 2)}
 Original Transcript (for reference only):
 ${originalTranscript}
 
-Create a complete YouTube video script that includes:
-1. Catchy title options
-2. Engaging hook (first 15 seconds)
-3. Main content sections with clear transitions
-4. Strategic call-to-action
-5. Thumbnail ideas
-6. Video description and tags
-
-Make the content unique while incorporating successful elements from the analysis. Format as JSON:
+Return ONLY this exact JSON structure (no other text):
 {
   "title": "Main title (with 2-3 alternatives)",
   "hook": "Opening hook script (15 seconds)",
@@ -120,9 +112,19 @@ Make the content unique while incorporating successful elements from the analysi
       throw new Error("Invalid response format from Claude");
     }
 
-    // Parse the JSON response
-    const script = JSON.parse(content.text) as YouTubeScript;
-    return script;
+    // Clean and parse the JSON response
+    let jsonText = content.text.trim();
+    // Remove any markdown code block formatting if present
+    jsonText = jsonText.replace(/^```json\n?/, "").replace(/\n?```$/, "");
+
+    try {
+      const script = JSON.parse(jsonText) as YouTubeScript;
+      return script;
+    } catch (parseError) {
+      console.error("JSON Parse Error:", parseError);
+      console.error("Raw response:", jsonText);
+      throw new Error("Failed to parse script JSON from Claude's response");
+    }
   } catch (error) {
     console.error("Script Generation Error:", error);
     throw new Error(
