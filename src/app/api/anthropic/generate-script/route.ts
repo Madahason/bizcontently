@@ -58,6 +58,7 @@ interface YouTubeScript {
     description: string;
     tags: string[];
     category: string;
+    estimatedDuration: string;
   };
 }
 
@@ -72,11 +73,19 @@ async function generateScript(
       max_tokens: 4000,
       temperature: 0.7,
       system:
-        "You are an expert YouTube script writer and content strategist. Your task is to create a unique, engaging script that follows best practices for YouTube content while being completely original. You must respond with ONLY valid JSON - no other text before or after. The JSON must exactly match the specified structure.",
+        "You are an expert YouTube script writer and content strategist. Your task is to create a unique, engaging script that follows best practices for YouTube content while being completely original. The script must be equal to or longer than the original transcript in terms of content depth and detail. You must respond with ONLY valid JSON - no other text before or after. The JSON must exactly match the specified structure.",
       messages: [
         {
           role: "user",
-          content: `Create a YouTube script about "${topic}" using this content analysis for inspiration. Respond with ONLY valid JSON - no other text, no explanations, no markdown formatting.
+          content: `Create a comprehensive YouTube script about "${topic}" using this content analysis for inspiration. The script must be equal to or longer than the original transcript, covering all key points in detail plus additional valuable insights. Respond with ONLY valid JSON - no other text, no explanations, no markdown formatting.
+
+Important Requirements:
+1. Match or exceed the original content's length and depth
+2. Cover all key topics from the original plus additional valuable insights
+3. Include detailed examples and explanations
+4. Break down complex concepts thoroughly
+5. Add actionable steps and practical applications
+6. Maintain high engagement throughout the extended content
 
 Content Analysis:
 ${JSON.stringify(contentAnalysis, null, 2)}
@@ -91,16 +100,17 @@ Return ONLY this exact JSON structure (no other text):
   "sections": [
     {
       "type": "intro/main/example/conclusion",
-      "content": "Actual script text",
-      "notes": "Delivery/visual notes"
+      "content": "Detailed script text - ensure each section is comprehensive and thorough",
+      "notes": "Delivery/visual notes, including timing and pacing for longer content"
     }
   ],
   "callToAction": "CTA script",
   "thumbnailIdeas": ["3-4 thumbnail concepts"],
   "metadata": {
-    "description": "YouTube description with timestamps",
+    "description": "Detailed YouTube description with accurate timestamps for the longer content",
     "tags": ["relevant", "tags"],
-    "category": "video category"
+    "category": "video category",
+    "estimatedDuration": "Estimated video length in minutes"
   }
 }`,
         },
