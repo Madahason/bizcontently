@@ -1,38 +1,118 @@
 import { NextResponse } from "next/server";
-import { createTrendAnalysisChain } from "@/lib/ai/chains/viralChains";
+import { google } from "googleapis";
 
-interface ViralSearchRequest {
-  niche: string;
-  platform: string;
-  targetAudience: string;
-  context?: string;
-}
+const youtube = google.youtube({
+  version: "v3",
+  auth: process.env.YOUTUBE_API_KEY,
+});
 
 export async function POST(req: Request) {
   try {
-    const { niche, platform, targetAudience, context } =
-      (await req.json()) as ViralSearchRequest;
+    const { searchTerm } = await req.json();
 
-    if (!niche || !platform || !targetAudience) {
+    if (!searchTerm) {
       return NextResponse.json(
-        { error: "Missing required parameters" },
+        { error: "Search term is required" },
         { status: 400 }
       );
     }
 
-    const chain = createTrendAnalysisChain();
-    const analysis = await chain.invoke({
-      niche,
-      platform,
-      targetAudience,
-      context,
+    // First, search for videos
+    const searchResponse = await youtube.search.list({
+      part: ["id", "snippet"],
+      q: searchTerm,
+      type: ["video"],
+      maxResults: 50, // Get maximum results to increase chances of finding viral videos
+      order: "viewCount", // Sort by view count to prioritize popular videos
     });
 
-    return NextResponse.json({ analysis });
+    if (!searchResponse.data.items) {
+      return NextResponse.json({ videos: [] });
+    }
+
+    // Get video statistics for all videos
+    const videoIds = searchResponse.data.items
+      .map((item) => item.id?.videoId)
+      .filter((id): id is string => id !== undefined && id !== null);
+
+    if (videoIds.length === 0) {
+      return NextResponse.json({ videos: [] });
+    }
+
+    const videoStatsResponse = await youtube.videos.list({
+      part: ["statistics"],
+      id: videoIds,
+    });
+
+    // Get channel statistics for all channels
+    const channelIds = searchResponse.data.items
+      .map((item) => item.snippet?.channelId)
+      .filter((id): id is string => id !== undefined && id !== null);
+
+    if (channelIds.length === 0) {
+      return NextResponse.json({ videos: [] });
+    }
+
+    const channelStatsResponse = await youtube.channels.list({
+      part: ["statistics"],
+      id: channelIds,
+    });
+
+    // Create a map of channel stats for quick lookup
+    const channelStatsMap = new Map();
+    channelStatsResponse.data.items?.forEach((channel) => {
+      if (channel.id) {
+        channelStatsMap.set(channel.id, channel.statistics);
+      }
+    });
+
+    // Combine video data with statistics and filter viral videos
+    const videos = searchResponse.data.items
+      .map((item, index) => {
+        const videoStats = videoStatsResponse.data.items?.[index]?.statistics;
+        const channelStats = item.snippet?.channelId
+          ? channelStatsMap.get(item.snippet.channelId)
+          : null;
+
+        if (!videoStats || !channelStats || !item.id?.videoId) return null;
+
+        const viewCount = parseInt(videoStats.viewCount || "0");
+        const subscriberCount = parseInt(channelStats.subscriberCount || "0");
+        const averageViews =
+          parseInt(channelStats.viewCount || "0") /
+          parseInt(channelStats.videoCount || "1");
+
+        // Check if video is viral (more views than subscribers or average channel views)
+        const isViral = viewCount > subscriberCount || viewCount > averageViews;
+
+        if (!isViral) return null;
+
+        return {
+          id: item.id.videoId,
+          title: item.snippet?.title,
+          thumbnail: item.snippet?.thumbnails?.high?.url,
+          channelTitle: item.snippet?.channelTitle,
+          publishedAt: item.snippet?.publishedAt,
+          statistics: {
+            viewCount,
+            likeCount: videoStats.likeCount,
+            commentCount: videoStats.commentCount,
+          },
+          viralMetrics: {
+            subscriberCount,
+            averageChannelViews: Math.round(averageViews),
+            viewsToSubscriberRatio: (viewCount / subscriberCount).toFixed(2),
+            viewsToAverageRatio: (viewCount / averageViews).toFixed(2),
+          },
+        };
+      })
+      .filter((video): video is NonNullable<typeof video> => video !== null);
+
+    return NextResponse.json({ videos });
   } catch (error) {
-    console.error("Viral trend analysis error:", error);
+    console.error("YouTube API Error:", error);
     return NextResponse.json(
-      { error: "Failed to analyze viral trends" },
+      { error: "Failed to fetch viral videos" },
       { status: 500 }
     );
   }
