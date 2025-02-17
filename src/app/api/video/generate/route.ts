@@ -1,7 +1,28 @@
 import { NextResponse } from "next/server";
-import { VideoStyle, VideoScene } from "@/lib/video/templates/base/types";
-import { StockTemplateEngine } from "@/lib/video/engines/StockTemplateEngine";
-import Replicate from "replicate";
+import type { VideoStyle } from "@/lib/video/templates/base/types";
+import type { PexelsVideo } from "@/lib/video/config/pexels.config";
+import {
+  searchPexelsVideos,
+  getBestQualityVideo,
+} from "@/lib/video/config/pexels.config";
+import { VideoProcessor } from "@/lib/video/processors/VideoProcessor";
+import { v4 as uuidv4 } from "uuid";
+import path from "path";
+import fs from "fs";
+
+// Ensure temp and output directories exist
+const tempDir = path.join(process.cwd(), "temp");
+const outputDir = path.join(process.cwd(), "public", "videos");
+
+if (!fs.existsSync(tempDir)) {
+  fs.mkdirSync(tempDir, { recursive: true });
+}
+if (!fs.existsSync(outputDir)) {
+  fs.mkdirSync(outputDir, { recursive: true });
+}
+
+// Initialize video processor
+const videoProcessor = new VideoProcessor();
 
 interface SceneNotes {
   setup: string;
@@ -31,90 +52,184 @@ interface YouTubeScript {
   };
 }
 
-const replicate = new Replicate({
-  auth: process.env.REPLICATE_API_KEY,
-});
-
-async function generateVideoWithReplicate(
-  prompt: string,
+async function generateVideoSection(
+  content: string,
+  type: string,
   sectionIndex: number,
   totalSections: number
 ): Promise<{ url: string; progress: number }> {
   try {
-    console.log(
-      `Generating video for section ${sectionIndex + 1}/${totalSections}`
-    );
-    console.log(`Prompt: ${prompt}`);
+    // Extract keywords from content for better video search
+    const keywords = content
+      .split(" ")
+      .filter((word) => word.length > 3)
+      .slice(0, 3)
+      .join(" ");
 
-    const prediction = await replicate.predictions.create({
-      version:
-        "50c64285d83176af599c927e4d0c5d0bfd10d7151c946ef8f1edcd1d3d01ab6b",
-      input: {
-        prompt,
-        num_frames: 14,
-        width: 1024,
-        height: 576,
-        num_inference_steps: 25,
-        fps: 6,
-        motion_bucket_id: 127,
-        seed: Math.floor(Math.random() * 2147483647),
+    console.log(`Searching stock footage for: ${keywords}`);
+
+    const searchResponse = await searchPexelsVideos(keywords, 5);
+    const videos = searchResponse.videos;
+
+    if (!videos || videos.length === 0) {
+      throw new Error("No suitable stock footage found");
+    }
+
+    // Select the best quality video file
+    const video = videos[0];
+    const videoUrl = getBestQualityVideo(video);
+
+    if (!videoUrl) {
+      throw new Error("No suitable video file format found");
+    }
+
+    // Process video with text overlay
+    const textOverlays = [
+      {
+        text: type.toUpperCase(),
+        startTime: 0,
+        duration: 2,
+        position: "top" as const,
+        fontSize: 36,
       },
-    });
+      {
+        text: content,
+        startTime: 2,
+        duration: 8,
+        position: "center" as const,
+        fontSize: 48,
+      },
+    ];
 
-    // Wait for the prediction to complete
-    let result = await replicate.predictions.get(prediction.id);
-    while (result.status !== "succeeded" && result.status !== "failed") {
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-      result = await replicate.predictions.get(prediction.id);
-      console.log(
-        `Generation status for section ${sectionIndex + 1}: ${result.status}`
-      );
-    }
+    const outputFileName = `${uuidv4()}-section-${sectionIndex}`;
+    const processedVideoUrl = await videoProcessor.processVideo(
+      videoUrl,
+      textOverlays,
+      outputFileName
+    );
 
-    if (result.status === "failed") {
-      throw new Error(
-        `Video generation failed for section ${sectionIndex + 1}: ${
-          result.error
-        }`
-      );
-    }
+    // Add transition effect
+    const finalVideoUrl = await videoProcessor.addTransition(
+      processedVideoUrl,
+      "fade",
+      1
+    );
 
     const progress = ((sectionIndex + 1) / totalSections) * 100;
     return {
-      url: result.output as string,
+      url: finalVideoUrl,
       progress,
     };
   } catch (error) {
     console.error("Video generation error:", error);
-    throw new Error(
-      `Failed to generate video for section ${sectionIndex + 1}: ${
-        error instanceof Error ? error.message : "Unknown error"
-      }`
-    );
+    throw error;
   }
 }
 
 export async function POST(req: Request) {
   try {
-    const { script, style } = await req.json();
+    // Log request details
+    const contentType = req.headers.get("content-type");
+    console.log("Request headers:", {
+      contentType,
+      method: req.method,
+    });
 
-    // Validate input
+    // Verify content type
+    if (!contentType?.includes("application/json")) {
+      return new NextResponse(
+        JSON.stringify({
+          error: "Invalid content type",
+          expected: "application/json",
+          received: contentType,
+        }),
+        {
+          status: 400,
+          headers: { "Content-Type": "application/json" },
+        }
+      );
+    }
+
+    // Get the raw body and parse it
+    const rawBody = await req.text();
+    console.log("Raw request body length:", rawBody.length);
+    console.log("Raw request body preview:", rawBody.substring(0, 100));
+
+    let body;
+    try {
+      body = JSON.parse(rawBody);
+    } catch (error) {
+      return new NextResponse(
+        JSON.stringify({
+          error: "Failed to parse JSON body",
+          details: error instanceof Error ? error.message : "Unknown error",
+          receivedData: rawBody.substring(0, 100) + "...",
+          receivedLength: rawBody.length,
+          receivedContentType: contentType,
+        }),
+        {
+          status: 400,
+          headers: { "Content-Type": "application/json" },
+        }
+      );
+    }
+
+    // Validate request body structure
+    const { script, style } = body;
+
     if (!script || !style) {
-      return NextResponse.json(
-        { error: "Missing required fields" },
-        { status: 400 }
+      return new NextResponse(
+        JSON.stringify({
+          error: "Missing required fields",
+          receivedFields: Object.keys(body),
+          expectedFields: ["script", "style"],
+          bodyPreview: JSON.stringify(body).substring(0, 100),
+        }),
+        {
+          status: 400,
+          headers: { "Content-Type": "application/json" },
+        }
       );
     }
 
-    // Validate API key
-    if (!process.env.REPLICATE_API_KEY) {
-      return NextResponse.json(
-        { error: "Replicate API key is not configured" },
-        { status: 500 }
+    // Add response headers for streaming
+    const headers = new Headers({
+      "Content-Type": "application/json",
+      "Transfer-Encoding": "chunked",
+      Connection: "keep-alive",
+      "Cache-Control": "no-cache",
+    });
+
+    // Validate script structure
+    const missingFields = [];
+    if (!script.hook) missingFields.push("hook");
+    if (!Array.isArray(script.sections)) missingFields.push("sections array");
+    if (!script.callToAction) missingFields.push("callToAction");
+
+    if (missingFields.length > 0) {
+      return new NextResponse(
+        JSON.stringify({
+          error: "Invalid script structure",
+          missingFields,
+          receivedScript: script,
+        }),
+        {
+          status: 400,
+          headers: { "Content-Type": "application/json" },
+        }
       );
     }
 
-    // Prepare all sections
+    if (!process.env.PEXELS_API_KEY) {
+      return new NextResponse(
+        JSON.stringify({ error: "Pexels API key is not configured" }),
+        {
+          status: 500,
+          headers: { "Content-Type": "application/json" },
+        }
+      );
+    }
+
     const allSections = [
       { type: "Hook", content: script.hook },
       ...script.sections.map((section: ScriptSection) => ({
@@ -127,24 +242,21 @@ export async function POST(req: Request) {
     const totalSections = allSections.length;
     console.log(`Starting video generation for ${totalSections} sections`);
 
-    // Generate videos sequentially to better handle errors and progress
     const videos = [];
     let currentProgress = 0;
 
     for (let i = 0; i < allSections.length; i++) {
       const section = allSections[i];
-      const prompt = `${section.content}. Style: cinematic, professional, high quality video with smooth motion`;
-
       try {
-        const { url, progress } = await generateVideoWithReplicate(
-          prompt,
+        const { url, progress } = await generateVideoSection(
+          section.content,
+          section.type,
           i,
           totalSections
         );
         videos.push(url);
         currentProgress = progress;
 
-        // Send progress update
         console.log(
           `Section ${
             i + 1
@@ -152,34 +264,66 @@ export async function POST(req: Request) {
         );
       } catch (error) {
         console.error(`Error generating video for section ${i + 1}:`, error);
-        return NextResponse.json(
-          {
+        return new NextResponse(
+          JSON.stringify({
             error: `Failed to generate video for ${section.type}: ${
               error instanceof Error ? error.message : "Unknown error"
             }`,
             progress: currentProgress,
-          },
-          { status: 500 }
+          }),
+          {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          }
         );
       }
     }
 
-    console.log("All videos generated successfully");
-    return NextResponse.json({
-      status: "completed",
-      videos,
-      previewUrl: videos[0],
-      progress: 100,
-    });
+    // Concatenate all videos
+    try {
+      const finalVideo = await videoProcessor.concatenateVideos(
+        videos,
+        `final-${uuidv4()}`
+      );
+
+      console.log("All videos generated and combined successfully");
+      return new NextResponse(
+        JSON.stringify({
+          status: "completed",
+          videos: [finalVideo],
+          previewUrl: finalVideo,
+          progress: 100,
+        }),
+        {
+          status: 200,
+          headers,
+        }
+      );
+    } catch (error) {
+      console.error("Error concatenating videos:", error);
+      return new NextResponse(
+        JSON.stringify({
+          error: "Failed to combine video sections",
+          progress: currentProgress,
+        }),
+        {
+          status: 500,
+          headers: { "Content-Type": "application/json" },
+        }
+      );
+    }
   } catch (error) {
     console.error("Video generation error:", error);
-    return NextResponse.json(
-      {
+    return new NextResponse(
+      JSON.stringify({
         error:
           error instanceof Error ? error.message : "Failed to generate video",
         progress: 0,
-      },
-      { status: 500 }
+      }),
+      {
+        status: 500,
+        headers: { "Content-Type": "application/json" },
+      }
     );
   }
 }

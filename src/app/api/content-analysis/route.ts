@@ -109,8 +109,8 @@ Respond with this exact JSON structure (no other text):
       max_tokens: 2000,
     });
 
-    if (!response.choices[0].message.content) {
-      throw new Error("Empty response from OpenAI");
+    if (!response.choices[0]?.message?.content) {
+      throw new Error("Empty or invalid response from OpenAI");
     }
 
     const result = JSON.parse(response.choices[0].message.content);

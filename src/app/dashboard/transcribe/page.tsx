@@ -739,8 +739,8 @@ export default function TranscribePage() {
                     <h3 className="font-medium text-gray-900 dark:text-white">
                       Title
                     </h3>
-                    <p className="text-gray-600 dark:text-gray-400">
-                      {scriptResult.title}
+                    <p className="text-sm text-gray-500 dark:text-gray-400">
+                      &quot;{scriptResult.title}&quot;
                     </p>
                   </div>
                   <div>

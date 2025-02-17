@@ -1,10 +1,11 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import VideoStyleSelector from "../../components/VideoStyleSelector";
 import { VideoStyle } from "../../lib/video/templates/base/types";
 import { StockTemplateEngine } from "../../lib/video/engines/StockTemplateEngine";
+import LoadingSpinner from "@/app/components/LoadingSpinner";
 
 interface SceneNotes {
   setup: string;
@@ -34,14 +35,164 @@ interface YouTubeScript {
   };
 }
 
+interface GenerationStatus {
+  status: "idle" | "generating" | "completed" | "error";
+  progress: number;
+  currentStep: string;
+  error?: string;
+}
+
+interface GenerationResponse {
+  status: string;
+  videos: string[];
+  previewUrl: string;
+  progress: number;
+  error?: string;
+}
+
+function VideoGenerationContent({
+  script,
+  selectedStyle,
+  onComplete,
+}: {
+  script: YouTubeScript;
+  selectedStyle: VideoStyle | undefined;
+  onComplete: (videos: string[]) => void;
+}) {
+  const [generationStatus, setGenerationStatus] = useState<GenerationStatus>({
+    status: "idle",
+    progress: 0,
+    currentStep: "",
+  });
+
+  const handleGenerateVideo = async () => {
+    if (!script || !selectedStyle) {
+      setGenerationStatus({
+        status: "error",
+        progress: 0,
+        currentStep: "Missing script or style selection",
+      });
+      return;
+    }
+
+    setGenerationStatus({
+      status: "generating",
+      progress: 0,
+      currentStep: "Initializing video generation...",
+    });
+
+    try {
+      const requestBody = {
+        script,
+        style: selectedStyle,
+      };
+
+      // Log the request body for debugging
+      console.log("Request body:", {
+        contentType: "application/json",
+        bodyLength: JSON.stringify(requestBody).length,
+        script: {
+          title: script.title,
+          sectionsCount: script.sections.length,
+        },
+        style: selectedStyle,
+      });
+
+      const response = await fetch("/api/video/generate", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        body: JSON.stringify(requestBody),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error("Server error response:", {
+          status: response.status,
+          statusText: response.statusText,
+          body: errorText,
+        });
+        try {
+          const errorJson = JSON.parse(errorText);
+          throw new Error(errorJson.error || "Failed to generate video");
+        } catch (parseError) {
+          throw new Error(`Server error: ${errorText}`);
+        }
+      }
+
+      const data: GenerationResponse = await response.json();
+
+      if (data.videos && data.videos.length > 0) {
+        onComplete(data.videos);
+        setGenerationStatus({
+          status: "completed",
+          progress: 100,
+          currentStep: "Video generation completed!",
+        });
+      } else {
+        throw new Error("No videos were generated");
+      }
+    } catch (error) {
+      console.error("Video generation error:", error);
+      setGenerationStatus({
+        status: "error",
+        progress: 0,
+        currentStep: "Generation failed",
+        error: error instanceof Error ? error.message : "An error occurred",
+      });
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      <button
+        onClick={handleGenerateVideo}
+        disabled={generationStatus.status === "generating"}
+        className="px-6 py-3 rounded-lg font-medium flex items-center space-x-2 bg-purple-600 hover:bg-purple-700 text-white disabled:opacity-50 disabled:cursor-not-allowed"
+      >
+        {generationStatus.status === "generating" ? (
+          <>
+            <LoadingSpinner />
+            <span>Generating...</span>
+          </>
+        ) : (
+          <span>Generate Video</span>
+        )}
+      </button>
+
+      {generationStatus.status === "error" && (
+        <div className="p-4 bg-red-50 text-red-700 rounded-lg">
+          {generationStatus.error}
+        </div>
+      )}
+
+      {generationStatus.status === "generating" && (
+        <div className="p-4 bg-purple-50 text-purple-700 rounded-lg">
+          <div className="flex items-center space-x-2">
+            <LoadingSpinner />
+            <span>{generationStatus.currentStep}</span>
+          </div>
+          <div className="mt-2 h-2 bg-purple-200 rounded-full">
+            <div
+              className="h-full bg-purple-600 rounded-full transition-all duration-300"
+              style={{ width: `${generationStatus.progress}%` }}
+            />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function CreateVideoPage() {
   const searchParams = useSearchParams();
   const [script, setScript] = useState<YouTubeScript | null>(null);
-  const [activeSection, setActiveSection] = useState<number>(0);
   const [selectedStyle, setSelectedStyle] = useState<VideoStyle | null>(null);
-  const [recordingStatus, setRecordingStatus] = useState<
-    "idle" | "recording" | "paused"
-  >("idle");
+  const [videos, setVideos] = useState<string[]>([]);
+  const [currentVideoIndex, setCurrentVideoIndex] = useState<number>(0);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
 
   useEffect(() => {
     const scriptParam = searchParams.get("script");
@@ -55,22 +206,12 @@ export default function CreateVideoPage() {
     }
   }, [searchParams]);
 
-  const handleStyleSelect = (style: VideoStyle) => {
-    setSelectedStyle(style);
-    // Initialize the appropriate template engine based on the selected style
-    let engine;
-    switch (style) {
-      case "stock":
-        engine = new StockTemplateEngine();
-        break;
-      // Add other engine initializations as they are implemented
-      default:
-        console.warn(`Template engine for ${style} style not yet implemented`);
-        return;
+  const handleVideoGenerated = (generatedVideos: string[]) => {
+    setVideos(generatedVideos);
+    if (generatedVideos.length > 0) {
+      setPreviewUrl(generatedVideos[0]);
+      setCurrentVideoIndex(0);
     }
-
-    // You can store the engine in state if needed
-    console.log(`Initialized ${style} template engine`);
   };
 
   if (!script) {
@@ -88,19 +229,9 @@ export default function CreateVideoPage() {
     );
   }
 
-  const allSections = [
-    { type: "Hook", content: script.hook },
-    ...script.sections.map((section) => ({
-      type: section.type,
-      content: section.content,
-    })),
-    { type: "Call to Action", content: script.callToAction },
-  ];
-
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       <div className="space-y-8">
-        {/* Header Section */}
         <div className="border-b border-gray-200 dark:border-gray-700 pb-8">
           <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-4">
             Create Video: {script.title}
@@ -110,175 +241,51 @@ export default function CreateVideoPage() {
           </p>
         </div>
 
-        {/* Style Selection */}
-        <div className="py-6">
-          <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-6">
-            Choose Your Style
-          </h2>
-          <VideoStyleSelector
-            onSelect={handleStyleSelect}
-            selectedStyle={selectedStyle || undefined}
-          />
-        </div>
+        <Suspense fallback={<LoadingSpinner />}>
+          <div className="py-6">
+            <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-6">
+              Choose Your Style
+            </h2>
+            <VideoStyleSelector
+              onSelect={setSelectedStyle}
+              selectedStyle={selectedStyle || undefined}
+            />
+          </div>
 
-        {selectedStyle && (
-          <div className="space-y-8 pt-6">
-            <div className="border-t border-gray-200 dark:border-gray-700 pt-8">
-              <h2 className="text-2xl font-semibold text-gray-900 dark:text-white mb-6">
-                Record Your Video
-              </h2>
-              <p className="text-gray-600 dark:text-gray-400 mb-8">
-                Record your video section by section using the script below.
-              </p>
+          {selectedStyle && (
+            <div className="space-y-8 pt-6">
+              <div className="border-t border-gray-200 dark:border-gray-700 pt-8">
+                <VideoGenerationContent
+                  script={script}
+                  selectedStyle={selectedStyle}
+                  onComplete={handleVideoGenerated}
+                />
 
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                {/* Script Section */}
-                <div className="space-y-6">
-                  <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-6">
+                {previewUrl && (
+                  <div className="mt-8">
                     <h3 className="text-xl font-semibold text-gray-900 dark:text-white mb-4">
-                      Script Sections
+                      Preview
                     </h3>
-                    <div className="space-y-4">
-                      {allSections.map((section, index) => (
-                        <button
-                          key={index}
-                          onClick={() => setActiveSection(index)}
-                          className={`w-full text-left p-4 rounded-lg transition-colors ${
-                            activeSection === index
-                              ? "bg-purple-100 dark:bg-purple-900/30 border-2 border-purple-500"
-                              : "bg-gray-50 dark:bg-gray-900/50 hover:bg-gray-100 dark:hover:bg-gray-900/70"
-                          }`}
-                        >
-                          <h4 className="font-medium text-gray-900 dark:text-white mb-2">
-                            {section.type}
-                          </h4>
-                          <p className="text-sm text-gray-600 dark:text-gray-400">
-                            {section.content}
-                          </p>
-                        </button>
-                      ))}
+                    <div className="aspect-video rounded-lg overflow-hidden bg-gray-900">
+                      <video
+                        src={previewUrl}
+                        className="w-full h-full"
+                        controls
+                        autoPlay
+                        onEnded={() => {
+                          if (videos.length > currentVideoIndex + 1) {
+                            setCurrentVideoIndex((prev) => prev + 1);
+                            setPreviewUrl(videos[currentVideoIndex + 1]);
+                          }
+                        }}
+                      />
                     </div>
                   </div>
-                </div>
-
-                {/* Recording Section */}
-                <div className="space-y-6">
-                  <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-6">
-                    <h3 className="text-xl font-semibold text-gray-900 dark:text-white mb-4">
-                      Recording
-                    </h3>
-                    <div className="aspect-video bg-gray-900 rounded-lg mb-6">
-                      {/* Video preview will go here */}
-                    </div>
-                    <div className="flex justify-center space-x-4">
-                      <button
-                        onClick={() =>
-                          setRecordingStatus(
-                            recordingStatus === "recording"
-                              ? "paused"
-                              : "recording"
-                          )
-                        }
-                        className={`px-6 py-3 rounded-lg font-medium flex items-center space-x-2 ${
-                          recordingStatus === "recording"
-                            ? "bg-red-600 hover:bg-red-700 text-white"
-                            : "bg-purple-600 hover:bg-purple-700 text-white"
-                        }`}
-                      >
-                        {recordingStatus === "recording" ? (
-                          <>
-                            <svg
-                              className="w-5 h-5"
-                              fill="none"
-                              stroke="currentColor"
-                              viewBox="0 0 24 24"
-                            >
-                              <path
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                strokeWidth={2}
-                                d="M10 9v6m4-6v6m7-3a9 9 0 11-18 0 9 9 0 0118 0z"
-                              />
-                            </svg>
-                            <span>Pause</span>
-                          </>
-                        ) : (
-                          <>
-                            <svg
-                              className="w-5 h-5"
-                              fill="none"
-                              stroke="currentColor"
-                              viewBox="0 0 24 24"
-                            >
-                              <path
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                strokeWidth={2}
-                                d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"
-                              />
-                              <path
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                strokeWidth={2}
-                                d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                              />
-                            </svg>
-                            <span>Record</span>
-                          </>
-                        )}
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Scene Notes */}
-                  {script.sections[activeSection]?.sceneNotes && (
-                    <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-6">
-                      <h3 className="text-xl font-semibold text-gray-900 dark:text-white mb-4">
-                        Scene Notes
-                      </h3>
-                      <div className="space-y-4">
-                        <div>
-                          <h4 className="font-medium text-gray-900 dark:text-white mb-2">
-                            Setup
-                          </h4>
-                          <p className="text-gray-600 dark:text-gray-400">
-                            {script.sections[activeSection].sceneNotes?.setup}
-                          </p>
-                        </div>
-                        <div>
-                          <h4 className="font-medium text-gray-900 dark:text-white mb-2">
-                            Shots
-                          </h4>
-                          <ul className="list-disc list-inside text-gray-600 dark:text-gray-400 space-y-1">
-                            {script.sections[
-                              activeSection
-                            ].sceneNotes?.shots.map((shot, index) => (
-                              <li key={index}>{shot}</li>
-                            ))}
-                          </ul>
-                        </div>
-                        <div>
-                          <h4 className="font-medium text-gray-900 dark:text-white mb-2">
-                            Visual Elements
-                          </h4>
-                          <ul className="list-disc list-inside text-gray-600 dark:text-gray-400 space-y-1">
-                            {script.sections[
-                              activeSection
-                            ].sceneNotes?.visualElements.map(
-                              (element, index) => (
-                                <li key={index}>{element}</li>
-                              )
-                            )}
-                          </ul>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </div>
+                )}
               </div>
             </div>
-          </div>
-        )}
+          )}
+        </Suspense>
       </div>
     </div>
   );

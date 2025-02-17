@@ -106,6 +106,10 @@ Format your response as JSON like this:
       response_format: { type: "json_object" },
     });
 
+    if (!response.choices[0]?.message?.content) {
+      throw new Error("Empty or invalid response from OpenAI");
+    }
+
     const result = JSON.parse(response.choices[0].message.content);
     return result;
   } catch (error) {

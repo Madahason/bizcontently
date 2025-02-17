@@ -64,6 +64,9 @@ export default function DashboardPage() {
           Analyze your website's search performance using real Google Search
           Console data
         </p>
+        <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
+          Let&apos;s start by analyzing your target keywords
+        </p>
       </div>
 
       {/* Search Form */}

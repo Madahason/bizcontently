@@ -56,13 +56,16 @@ export async function POST(request: Request) {
 
     console.log("Authenticating with Google...");
     const authClient = await auth.getClient();
-    google.options({ auth: authClient });
+    const searchConsoleClient = google.searchconsole({
+      version: "v1",
+      auth: authClient as any, // TODO: Fix type casting
+    });
 
     const siteUrl = process.env.GOOGLE_SEARCH_CONSOLE_SITE_URL;
     console.log("Using site URL:", siteUrl);
 
     console.log("Fetching search analytics data for keyword:", keyword);
-    const response = await searchconsole.searchanalytics.query({
+    const response = await searchConsoleClient.searchanalytics.query({
       siteUrl,
       requestBody: {
         startDate: getDateXDaysAgo(28),
