@@ -39,7 +39,7 @@ const SCENE_ANALYSIS_PROMPT = `Analyze the following script section and break it
 3. Determine the emotional tone and intensity
 4. Suggest appropriate visual style and music
 
-Provide the analysis in the following JSON format:
+You must respond with valid JSON only, no other text. Use this exact format:
 {
   "scenes": [{
     "content": "scene text",
@@ -47,7 +47,7 @@ Provide the analysis in the following JSON format:
     "keywords": ["key", "visual", "elements"],
     "sentiment": {
       "mood": "emotional tone",
-      "intensity": 0.8 // 0 to 1
+      "intensity": 0.8
     },
     "visualStyle": {
       "lighting": "bright/dark/natural/dramatic",
@@ -70,55 +70,114 @@ export async function analyzeScript(
   scriptContent: string
 ): Promise<AnalysisResult> {
   try {
+    console.log(
+      "Starting script analysis with content length:",
+      scriptContent.length
+    );
+
+    // Validate OpenAI API key
+    if (!process.env.OPENAI_API_KEY) {
+      throw new Error("OpenAI API key is not configured");
+    }
+
     // Use OpenAI for contextual understanding and scene segmentation
+    console.log("Sending request to OpenAI...");
     const completion = await openai.chat.completions.create({
       model: "gpt-4",
       messages: [
         {
           role: "system",
           content:
-            "You are an expert video script analyst and cinematographer. Analyze scripts to identify natural scene breaks, emotional tones, and visual elements.",
+            "You are an expert video script analyst and cinematographer. You must respond with valid JSON only, no other text. Analyze scripts to identify natural scene breaks, emotional tones, and visual elements.",
         },
         {
           role: "user",
           content: SCENE_ANALYSIS_PROMPT + "\n\n" + scriptContent,
         },
       ],
-      response_format: { type: "json_object" },
       temperature: 0.7,
     });
 
-    const analysis = JSON.parse(completion.choices[0].message.content || "{}");
+    console.log("Received response from OpenAI");
+
+    if (!completion.choices[0].message.content) {
+      throw new Error("Empty response from OpenAI");
+    }
+
+    let analysis;
+    try {
+      analysis = JSON.parse(completion.choices[0].message.content.trim());
+      console.log("Successfully parsed OpenAI response");
+    } catch (parseError) {
+      console.error(
+        "Failed to parse OpenAI response:",
+        completion.choices[0].message.content
+      );
+      throw new Error("Invalid JSON response from OpenAI");
+    }
+
+    if (!analysis.scenes || !Array.isArray(analysis.scenes)) {
+      console.error("Invalid analysis structure:", analysis);
+      throw new Error("Invalid analysis structure from OpenAI");
+    }
 
     // Enhance keyword extraction using NLP
+    console.log(
+      "Starting keyword extraction for",
+      analysis.scenes.length,
+      "scenes"
+    );
     const enhancedScenes = await Promise.all(
-      analysis.scenes.map(async (scene: Scene) => {
-        const extractedKeywords = keyword_extractor.extract(scene.content, {
-          language: "english",
-          remove_digits: true,
-          return_changed_case: true,
-          remove_duplicates: true,
-        });
+      analysis.scenes.map(async (scene: Scene, index: number) => {
+        try {
+          console.log(
+            `Processing scene ${index + 1}/${analysis.scenes.length}`
+          );
+          const extractedKeywords = keyword_extractor.extract(scene.content, {
+            language: "english",
+            remove_digits: true,
+            return_changed_case: true,
+            remove_duplicates: true,
+          });
 
-        // Merge AI-generated keywords with NLP-extracted keywords
-        const combinedKeywords = Array.from(
-          new Set([...scene.keywords, ...extractedKeywords])
-        );
+          // Merge AI-generated keywords with NLP-extracted keywords
+          const combinedKeywords = Array.from(
+            new Set([...scene.keywords, ...extractedKeywords])
+          );
 
-        return {
-          ...scene,
-          keywords: combinedKeywords,
-        };
+          return {
+            ...scene,
+            keywords: combinedKeywords,
+          };
+        } catch (keywordError) {
+          console.error(
+            `Failed to extract keywords for scene ${index + 1}:`,
+            keywordError
+          );
+          return scene; // Return original scene if keyword extraction fails
+        }
       })
     );
 
+    console.log("Successfully completed script analysis");
     return {
       ...analysis,
       scenes: enhancedScenes,
     };
   } catch (error) {
-    console.error("Script analysis error:", error);
-    throw new Error("Failed to analyze script");
+    // Enhanced error logging
+    console.error("Script analysis error:", {
+      error: error instanceof Error ? error.message : "Unknown error",
+      stack: error instanceof Error ? error.stack : undefined,
+      scriptLength: scriptContent.length,
+    });
+
+    // Rethrow with more specific error message
+    throw new Error(
+      error instanceof Error
+        ? `Script analysis failed: ${error.message}`
+        : "Failed to analyze script"
+    );
   }
 }
 

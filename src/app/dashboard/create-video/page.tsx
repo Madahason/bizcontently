@@ -25,6 +25,12 @@ interface YouTubeScript {
   };
 }
 
+interface ApiError {
+  error: string;
+  details?: string;
+  timestamp?: string;
+}
+
 export default function CreateVideoPage() {
   const searchParams = useSearchParams();
   const [script, setScript] = useState<YouTubeScript | null>(null);
@@ -35,7 +41,7 @@ export default function CreateVideoPage() {
   const [viewMode, setViewMode] = useState<"document" | "sections">("document");
   const [documentContent, setDocumentContent] = useState("");
   const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [analysisError, setAnalysisError] = useState("");
+  const [analysisError, setAnalysisError] = useState<ApiError | null>(null);
 
   useEffect(() => {
     const scriptParam = searchParams.get("script");
@@ -242,15 +248,42 @@ Category: ${script.metadata.category}`;
     setGenerationProgress(0);
 
     try {
+      // Prepare enhanced video generation payload
+      const videoGenerationPayload = {
+        script,
+        style: "modern",
+        sceneSettings: script.sections
+          .map((section) => {
+            if (!section.scene) return null;
+
+            return {
+              type: section.scene.type,
+              visualStyle: {
+                lighting: section.scene.visualStyle.lighting,
+                pace: section.scene.visualStyle.pace,
+                colorScheme: section.scene.visualStyle.colorScheme,
+              },
+              music: {
+                genre: section.scene.suggestedMusic.genre,
+                tempo: section.scene.suggestedMusic.tempo,
+                mood: section.scene.suggestedMusic.mood,
+              },
+              sentiment: {
+                mood: section.scene.sentiment.mood,
+                intensity: section.scene.sentiment.intensity,
+              },
+              keywords: section.scene.keywords,
+            };
+          })
+          .filter(Boolean), // Remove null values for unanalyzed sections
+      };
+
       const response = await fetch("/api/video/generate", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({
-          script,
-          style: "modern",
-        }),
+        body: JSON.stringify(videoGenerationPayload),
       });
 
       if (!response.ok) {
@@ -290,38 +323,51 @@ Category: ${script.metadata.category}`;
     if (!script) return;
 
     setIsAnalyzing(true);
-    setAnalysisError("");
+    setAnalysisError(null);
 
     try {
+      console.log("Preparing script for analysis");
+      const scriptContent = formatScriptToDocument(script);
+
       const response = await fetch("/api/script/analyze", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          script: formatScriptToDocument(script),
+          script: scriptContent,
         }),
       });
 
+      const data = await response.json();
+
       if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.error || "Failed to analyze script");
+        console.error("Analysis request failed:", data);
+        throw new Error(
+          data.details || data.error || "Failed to analyze script"
+        );
       }
 
-      const analysis = await response.json();
+      if (!data.scenes || !Array.isArray(data.scenes)) {
+        console.error("Invalid analysis response:", data);
+        throw new Error("Invalid analysis response format");
+      }
 
       // Update sections with scene analysis
       const updatedSections = script.sections.map((section, index) => ({
         ...section,
-        scene: analysis.scenes[index],
+        scene: data.scenes[index],
       }));
 
       handleScriptChange("sections", updatedSections);
     } catch (err) {
       console.error("Script analysis error:", err);
-      setAnalysisError(
-        err instanceof Error ? err.message : "Failed to analyze script"
-      );
+      setAnalysisError({
+        error: "Analysis Failed",
+        details:
+          err instanceof Error ? err.message : "An unexpected error occurred",
+        timestamp: new Date().toISOString(),
+      });
     } finally {
       setIsAnalyzing(false);
     }
@@ -414,7 +460,15 @@ Category: ${script.metadata.category}`;
 
       {analysisError && (
         <div className="rounded-lg bg-red-50 p-4 text-red-700 dark:bg-red-900/30 dark:text-red-400">
-          {analysisError}
+          <h3 className="font-medium">{analysisError.error}</h3>
+          {analysisError.details && (
+            <p className="mt-1 text-sm">{analysisError.details}</p>
+          )}
+          {analysisError.timestamp && (
+            <p className="mt-2 text-xs text-red-500">
+              {new Date(analysisError.timestamp).toLocaleString()}
+            </p>
+          )}
         </div>
       )}
 
@@ -513,53 +567,146 @@ Category: ${script.metadata.category}`;
                     {/* Scene Analysis Results */}
                     {section.scene && (
                       <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
-                        <h4 className="text-sm font-medium text-gray-900 dark:text-white mb-2">
-                          Scene Analysis
+                        <h4 className="text-sm font-medium text-purple-600 dark:text-purple-400 mb-4">
+                          Scene Analysis Results
                         </h4>
-                        <div className="grid grid-cols-2 gap-4">
-                          <div>
-                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                              Mood
+                        <div className="grid grid-cols-1 gap-4">
+                          {/* Contextual Understanding */}
+                          <div className="bg-gray-50 dark:bg-gray-900/50 p-3 rounded-lg">
+                            <label className="block text-sm font-medium text-gray-900 dark:text-white mb-2">
+                              Scene Type & Context
                             </label>
-                            <div className="mt-1 text-sm text-gray-600 dark:text-gray-400">
-                              {section.scene.sentiment.mood} (Intensity:{" "}
-                              {Math.round(
-                                section.scene.sentiment.intensity * 100
-                              )}
-                              %)
+                            <div className="text-sm text-gray-600 dark:text-gray-400">
+                              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200 mr-2">
+                                {section.scene.type}
+                              </span>
+                              {section.content}
                             </div>
                           </div>
-                          <div>
-                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                              Visual Style
+
+                          {/* Sentiment Analysis */}
+                          <div className="bg-gray-50 dark:bg-gray-900/50 p-3 rounded-lg">
+                            <label className="block text-sm font-medium text-gray-900 dark:text-white mb-2">
+                              Emotional Analysis
                             </label>
-                            <div className="mt-1 text-sm text-gray-600 dark:text-gray-400">
-                              {section.scene.visualStyle.lighting},{" "}
-                              {section.scene.visualStyle.pace} pace
+                            <div className="flex items-center space-x-4">
+                              <div className="flex-1">
+                                <div className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                                  Mood: {section.scene.sentiment.mood}
+                                </div>
+                                <div className="mt-1 relative pt-1">
+                                  <div className="overflow-hidden h-2 text-xs flex rounded bg-gray-200 dark:bg-gray-700">
+                                    <div
+                                      style={{
+                                        width: `${Math.round(
+                                          section.scene.sentiment.intensity *
+                                            100
+                                        )}%`,
+                                      }}
+                                      className="shadow-none flex flex-col text-center whitespace-nowrap text-white justify-center bg-purple-500"
+                                    ></div>
+                                  </div>
+                                  <div className="text-xs text-gray-600 dark:text-gray-400 mt-1">
+                                    Intensity:{" "}
+                                    {Math.round(
+                                      section.scene.sentiment.intensity * 100
+                                    )}
+                                    %
+                                  </div>
+                                </div>
+                              </div>
                             </div>
                           </div>
-                          <div>
-                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                              Keywords
+
+                          {/* Keywords */}
+                          <div className="bg-gray-50 dark:bg-gray-900/50 p-3 rounded-lg">
+                            <label className="block text-sm font-medium text-gray-900 dark:text-white mb-2">
+                              Extracted Keywords
                             </label>
-                            <div className="mt-1 flex flex-wrap gap-1">
+                            <div className="flex flex-wrap gap-2">
                               {section.scene.keywords.map((keyword, i) => (
                                 <span
                                   key={i}
-                                  className="inline-flex items-center px-2 py-1 rounded-md text-xs font-medium bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200"
+                                  className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200"
                                 >
                                   {keyword}
                                 </span>
                               ))}
                             </div>
                           </div>
-                          <div>
-                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                              Music Suggestion
+
+                          {/* Visual Style */}
+                          <div className="bg-gray-50 dark:bg-gray-900/50 p-3 rounded-lg">
+                            <label className="block text-sm font-medium text-gray-900 dark:text-white mb-2">
+                              Visual Style Recommendations
                             </label>
-                            <div className="mt-1 text-sm text-gray-600 dark:text-gray-400">
-                              {section.scene.suggestedMusic.genre} -{" "}
-                              {section.scene.suggestedMusic.mood}
+                            <div className="grid grid-cols-2 gap-3">
+                              <div>
+                                <div className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                                  Lighting
+                                </div>
+                                <div className="text-sm text-gray-600 dark:text-gray-400">
+                                  {section.scene.visualStyle.lighting}
+                                </div>
+                              </div>
+                              <div>
+                                <div className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                                  Pace
+                                </div>
+                                <div className="text-sm text-gray-600 dark:text-gray-400">
+                                  {section.scene.visualStyle.pace}
+                                </div>
+                              </div>
+                              <div className="col-span-2">
+                                <div className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                                  Color Scheme
+                                </div>
+                                <div className="flex gap-2 mt-1">
+                                  {section.scene.visualStyle.colorScheme.map(
+                                    (color, i) => (
+                                      <span
+                                        key={i}
+                                        className="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200"
+                                      >
+                                        {color}
+                                      </span>
+                                    )
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Music Suggestions */}
+                          <div className="bg-gray-50 dark:bg-gray-900/50 p-3 rounded-lg">
+                            <label className="block text-sm font-medium text-gray-900 dark:text-white mb-2">
+                              Music Recommendations
+                            </label>
+                            <div className="grid grid-cols-2 gap-3">
+                              <div>
+                                <div className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                                  Genre
+                                </div>
+                                <div className="text-sm text-gray-600 dark:text-gray-400">
+                                  {section.scene.suggestedMusic.genre}
+                                </div>
+                              </div>
+                              <div>
+                                <div className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                                  Tempo
+                                </div>
+                                <div className="text-sm text-gray-600 dark:text-gray-400">
+                                  {section.scene.suggestedMusic.tempo}
+                                </div>
+                              </div>
+                              <div className="col-span-2">
+                                <div className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                                  Mood
+                                </div>
+                                <div className="text-sm text-gray-600 dark:text-gray-400">
+                                  {section.scene.suggestedMusic.mood}
+                                </div>
+                              </div>
                             </div>
                           </div>
                         </div>

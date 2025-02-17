@@ -6,6 +6,8 @@ import {
   getBestQualityVideo,
 } from "@/lib/video/config/pexels.config";
 import { VideoProcessor } from "@/lib/video/processors/VideoProcessor";
+import { StockTemplateEngine } from "@/lib/video/engines/StockTemplateEngine";
+import { Scene } from "@/lib/ai/scriptAnalysis";
 import { v4 as uuidv4 } from "uuid";
 import path from "path";
 import fs from "fs";
@@ -20,9 +22,6 @@ if (!fs.existsSync(tempDir)) {
 if (!fs.existsSync(outputDir)) {
   fs.mkdirSync(outputDir, { recursive: true });
 }
-
-// Initialize video processor
-const videoProcessor = new VideoProcessor();
 
 interface SceneNotes {
   setup: string;
@@ -50,6 +49,25 @@ interface YouTubeScript {
     category: string;
     estimatedDuration: string;
   };
+}
+
+interface SceneSettings {
+  type: string;
+  visualStyle: {
+    lighting: "bright" | "dark" | "natural" | "dramatic";
+    pace: "slow" | "medium" | "fast";
+    colorScheme: string[];
+  };
+  music: {
+    genre: string;
+    tempo: "slow" | "medium" | "fast";
+    mood: string;
+  };
+  sentiment: {
+    mood: "happy" | "sad" | "neutral" | "excited" | "serious" | "angry";
+    intensity: number;
+  };
+  keywords: string[];
 }
 
 async function generateVideoSection(
@@ -128,202 +146,53 @@ async function generateVideoSection(
 
 export async function POST(req: Request) {
   try {
-    // Log request details
-    const contentType = req.headers.get("content-type");
-    console.log("Request headers:", {
-      contentType,
-      method: req.method,
+    const { script, style, sceneSettings } = await req.json();
+
+    // Initialize video processor with enhanced settings
+    const videoProcessor = new VideoProcessor({
+      templateEngine: new StockTemplateEngine(),
+      enhancedSettings: {
+        scenes: sceneSettings || [],
+        globalStyle: style,
+      },
     });
 
-    // Verify content type
-    if (!contentType?.includes("application/json")) {
-      return new NextResponse(
-        JSON.stringify({
-          error: "Invalid content type",
-          expected: "application/json",
-          received: contentType,
-        }),
-        {
-          status: 400,
-          headers: { "Content-Type": "application/json" },
-        }
-      );
-    }
+    // Create a TransformStream for progress updates
+    const stream = new TransformStream();
+    const writer = stream.writable.getWriter();
 
-    // Get the raw body and parse it
-    const rawBody = await req.text();
-    console.log("Raw request body length:", rawBody.length);
-    console.log("Raw request body preview:", rawBody.substring(0, 100));
+    // Start video generation with progress callback
+    videoProcessor
+      .generateVideo(script, async (progress: number) => {
+        await writer.write(
+          new TextEncoder().encode(
+            JSON.stringify({ progress: Math.round(progress) }) + "\n"
+          )
+        );
+      })
+      .then(async (videoUrl) => {
+        await writer.write(
+          new TextEncoder().encode(JSON.stringify({ url: videoUrl }) + "\n")
+        );
+        await writer.close();
+      })
+      .catch(async (error) => {
+        console.error("Video generation error:", error);
+        await writer.abort(error);
+      });
 
-    let body;
-    try {
-      body = JSON.parse(rawBody);
-    } catch (error) {
-      return new NextResponse(
-        JSON.stringify({
-          error: "Failed to parse JSON body",
-          details: error instanceof Error ? error.message : "Unknown error",
-          receivedData: rawBody.substring(0, 100) + "...",
-          receivedLength: rawBody.length,
-          receivedContentType: contentType,
-        }),
-        {
-          status: 400,
-          headers: { "Content-Type": "application/json" },
-        }
-      );
-    }
-
-    // Validate request body structure
-    const { script, style } = body;
-
-    if (!script || !style) {
-      return new NextResponse(
-        JSON.stringify({
-          error: "Missing required fields",
-          receivedFields: Object.keys(body),
-          expectedFields: ["script", "style"],
-          bodyPreview: JSON.stringify(body).substring(0, 100),
-        }),
-        {
-          status: 400,
-          headers: { "Content-Type": "application/json" },
-        }
-      );
-    }
-
-    // Add response headers for streaming
-    const headers = new Headers({
-      "Content-Type": "application/json",
-      "Transfer-Encoding": "chunked",
-      Connection: "keep-alive",
-      "Cache-Control": "no-cache",
+    return new NextResponse(stream.readable, {
+      headers: {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache",
+        Connection: "keep-alive",
+      },
     });
-
-    // Validate script structure
-    const missingFields = [];
-    if (!script.hook) missingFields.push("hook");
-    if (!Array.isArray(script.sections)) missingFields.push("sections array");
-    if (!script.callToAction) missingFields.push("callToAction");
-
-    if (missingFields.length > 0) {
-      return new NextResponse(
-        JSON.stringify({
-          error: "Invalid script structure",
-          missingFields,
-          receivedScript: script,
-        }),
-        {
-          status: 400,
-          headers: { "Content-Type": "application/json" },
-        }
-      );
-    }
-
-    if (!process.env.PEXELS_API_KEY) {
-      return new NextResponse(
-        JSON.stringify({ error: "Pexels API key is not configured" }),
-        {
-          status: 500,
-          headers: { "Content-Type": "application/json" },
-        }
-      );
-    }
-
-    const allSections = [
-      { type: "Hook", content: script.hook },
-      ...script.sections.map((section: ScriptSection) => ({
-        type: section.type,
-        content: section.content,
-      })),
-      { type: "Call to Action", content: script.callToAction },
-    ];
-
-    const totalSections = allSections.length;
-    console.log(`Starting video generation for ${totalSections} sections`);
-
-    const videos = [];
-    let currentProgress = 0;
-
-    for (let i = 0; i < allSections.length; i++) {
-      const section = allSections[i];
-      try {
-        const { url, progress } = await generateVideoSection(
-          section.content,
-          section.type,
-          i,
-          totalSections
-        );
-        videos.push(url);
-        currentProgress = progress;
-
-        console.log(
-          `Section ${
-            i + 1
-          }/${totalSections} completed. Progress: ${currentProgress}%`
-        );
-      } catch (error) {
-        console.error(`Error generating video for section ${i + 1}:`, error);
-        return new NextResponse(
-          JSON.stringify({
-            error: `Failed to generate video for ${section.type}: ${
-              error instanceof Error ? error.message : "Unknown error"
-            }`,
-            progress: currentProgress,
-          }),
-          {
-            status: 500,
-            headers: { "Content-Type": "application/json" },
-          }
-        );
-      }
-    }
-
-    // Concatenate all videos
-    try {
-      const finalVideo = await videoProcessor.concatenateVideos(
-        videos,
-        `final-${uuidv4()}`
-      );
-
-      console.log("All videos generated and combined successfully");
-      return new NextResponse(
-        JSON.stringify({
-          status: "completed",
-          videos: [finalVideo],
-          previewUrl: finalVideo,
-          progress: 100,
-        }),
-        {
-          status: 200,
-          headers,
-        }
-      );
-    } catch (error) {
-      console.error("Error concatenating videos:", error);
-      return new NextResponse(
-        JSON.stringify({
-          error: "Failed to combine video sections",
-          progress: currentProgress,
-        }),
-        {
-          status: 500,
-          headers: { "Content-Type": "application/json" },
-        }
-      );
-    }
   } catch (error) {
-    console.error("Video generation error:", error);
-    return new NextResponse(
-      JSON.stringify({
-        error:
-          error instanceof Error ? error.message : "Failed to generate video",
-        progress: 0,
-      }),
-      {
-        status: 500,
-        headers: { "Content-Type": "application/json" },
-      }
+    console.error("Video generation request error:", error);
+    return NextResponse.json(
+      { error: "Failed to generate video" },
+      { status: 500 }
     );
   }
 }

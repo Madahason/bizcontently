@@ -5,6 +5,8 @@ import {
   AnimationPreset,
 } from "../templates/base/types";
 import { BaseTemplateEngine } from "./BaseTemplateEngine";
+import { v4 as uuidv4 } from "uuid";
+import path from "path";
 
 interface StockSceneStyle {
   layout: "full" | "split" | "overlay" | "grid";
@@ -18,6 +20,23 @@ interface StockSceneStyle {
   };
   overlayOpacity?: number;
   kenBurns?: boolean;
+}
+
+interface SectionConfig {
+  content: string;
+  type: string;
+  visualStyle: {
+    lighting?: string;
+    pace?: string;
+    colorScheme?: string[];
+    keywords?: string[];
+    globalStyle: string;
+  };
+  music?: {
+    genre?: string;
+    tempo?: string;
+    mood?: string;
+  };
 }
 
 export class StockTemplateEngine extends BaseTemplateEngine {
@@ -35,8 +54,11 @@ export class StockTemplateEngine extends BaseTemplateEngine {
     kenBurns: true,
   };
 
+  private outputDir: string;
+
   constructor() {
     super("stock");
+    this.outputDir = path.join(process.cwd(), "public", "videos");
   }
 
   async createScene(
@@ -208,5 +230,103 @@ export class StockTemplateEngine extends BaseTemplateEngine {
           },
         };
     }
+  }
+
+  async createSection(config: SectionConfig): Promise<string> {
+    try {
+      // Use the visual style settings to find appropriate stock footage
+      const stockFootage = await this.findStockFootage({
+        keywords: config.visualStyle.keywords || [],
+        lighting: config.visualStyle.lighting,
+        style: config.visualStyle.globalStyle,
+      });
+
+      // Apply visual effects based on pace and mood
+      const visualEffects = this.getVisualEffects(config.visualStyle);
+
+      // Select background music based on settings
+      const backgroundMusic = await this.selectBackgroundMusic(config.music);
+
+      // Generate the section video with all components
+      const sectionVideo = await this.renderSection({
+        content: config.content,
+        type: config.type,
+        footage: stockFootage,
+        effects: visualEffects,
+        music: backgroundMusic,
+      });
+
+      return sectionVideo;
+    } catch (error) {
+      console.error("Error creating section:", error);
+      throw new Error(
+        error instanceof Error ? error.message : "Failed to create section"
+      );
+    }
+  }
+
+  async combineVideos(videoUrls: string[]): Promise<string> {
+    try {
+      // Combine all section videos into final video
+      const finalVideo = await this.concatenateVideos(videoUrls);
+      return finalVideo;
+    } catch (error) {
+      console.error("Error combining videos:", error);
+      throw new Error(
+        error instanceof Error ? error.message : "Failed to combine videos"
+      );
+    }
+  }
+
+  private async findStockFootage(params: {
+    keywords: string[];
+    lighting?: string;
+    style: string;
+  }): Promise<string[]> {
+    // Implementation to search and download stock footage based on parameters
+    // This would integrate with your existing stock footage API
+    return [];
+  }
+
+  private getVisualEffects(style: {
+    lighting?: string;
+    pace?: string;
+    colorScheme?: string[];
+  }): any {
+    // Generate FFmpeg filters and effects based on style settings
+    return {
+      filters: [],
+      transitions: [],
+    };
+  }
+
+  private async selectBackgroundMusic(params?: {
+    genre?: string;
+    tempo?: string;
+    mood?: string;
+  }): Promise<string> {
+    // Implementation to select appropriate background music
+    // This would integrate with your music library or API
+    return "";
+  }
+
+  private async renderSection(params: {
+    content: string;
+    type: string;
+    footage: string[];
+    effects: any;
+    music: string;
+  }): Promise<string> {
+    // Implementation to combine footage, effects, and music into a section
+    const outputPath = path.join(this.outputDir, `section-${uuidv4()}.mp4`);
+    // Add your video rendering logic here
+    return outputPath;
+  }
+
+  private async concatenateVideos(videoUrls: string[]): Promise<string> {
+    // Implementation to combine all sections into final video
+    const outputPath = path.join(this.outputDir, `final-${uuidv4()}.mp4`);
+    // Add your video concatenation logic here
+    return outputPath;
   }
 }
