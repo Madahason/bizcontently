@@ -1,24 +1,13 @@
 "use client";
 
-import { useState, useEffect, Suspense } from "react";
+import { useState, useEffect } from "react";
 import { useSearchParams } from "next/navigation";
-import VideoStyleSelector from "../../components/VideoStyleSelector";
-import { VideoStyle } from "../../lib/video/templates/base/types";
-import { StockTemplateEngine } from "../../lib/video/engines/StockTemplateEngine";
-import LoadingSpinner from "@/app/components/LoadingSpinner";
-
-interface SceneNotes {
-  setup: string;
-  shots: string[];
-  visualElements: string[];
-  transitions: string;
-}
+import { motion } from "framer-motion";
 
 interface ScriptSection {
   type: string;
   content: string;
   notes: string;
-  sceneNotes?: SceneNotes;
 }
 
 interface YouTubeScript {
@@ -31,168 +20,18 @@ interface YouTubeScript {
     description: string;
     tags: string[];
     category: string;
-    estimatedDuration: string;
   };
-}
-
-interface GenerationStatus {
-  status: "idle" | "generating" | "completed" | "error";
-  progress: number;
-  currentStep: string;
-  error?: string;
-}
-
-interface GenerationResponse {
-  status: string;
-  videos: string[];
-  previewUrl: string;
-  progress: number;
-  error?: string;
-}
-
-function VideoGenerationContent({
-  script,
-  selectedStyle,
-  onComplete,
-}: {
-  script: YouTubeScript;
-  selectedStyle: VideoStyle | undefined;
-  onComplete: (videos: string[]) => void;
-}) {
-  const [generationStatus, setGenerationStatus] = useState<GenerationStatus>({
-    status: "idle",
-    progress: 0,
-    currentStep: "",
-  });
-
-  const handleGenerateVideo = async () => {
-    if (!script || !selectedStyle) {
-      setGenerationStatus({
-        status: "error",
-        progress: 0,
-        currentStep: "Missing script or style selection",
-      });
-      return;
-    }
-
-    setGenerationStatus({
-      status: "generating",
-      progress: 0,
-      currentStep: "Initializing video generation...",
-    });
-
-    try {
-      const requestBody = {
-        script,
-        style: selectedStyle,
-      };
-
-      // Log the request body for debugging
-      console.log("Request body:", {
-        contentType: "application/json",
-        bodyLength: JSON.stringify(requestBody).length,
-        script: {
-          title: script.title,
-          sectionsCount: script.sections.length,
-        },
-        style: selectedStyle,
-      });
-
-      const response = await fetch("/api/video/generate", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Accept: "application/json",
-        },
-        body: JSON.stringify(requestBody),
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error("Server error response:", {
-          status: response.status,
-          statusText: response.statusText,
-          body: errorText,
-        });
-        try {
-          const errorJson = JSON.parse(errorText);
-          throw new Error(errorJson.error || "Failed to generate video");
-        } catch (parseError) {
-          throw new Error(`Server error: ${errorText}`);
-        }
-      }
-
-      const data: GenerationResponse = await response.json();
-
-      if (data.videos && data.videos.length > 0) {
-        onComplete(data.videos);
-        setGenerationStatus({
-          status: "completed",
-          progress: 100,
-          currentStep: "Video generation completed!",
-        });
-      } else {
-        throw new Error("No videos were generated");
-      }
-    } catch (error) {
-      console.error("Video generation error:", error);
-      setGenerationStatus({
-        status: "error",
-        progress: 0,
-        currentStep: "Generation failed",
-        error: error instanceof Error ? error.message : "An error occurred",
-      });
-    }
-  };
-
-  return (
-    <div className="space-y-6">
-      <button
-        onClick={handleGenerateVideo}
-        disabled={generationStatus.status === "generating"}
-        className="px-6 py-3 rounded-lg font-medium flex items-center space-x-2 bg-purple-600 hover:bg-purple-700 text-white disabled:opacity-50 disabled:cursor-not-allowed"
-      >
-        {generationStatus.status === "generating" ? (
-          <>
-            <LoadingSpinner />
-            <span>Generating...</span>
-          </>
-        ) : (
-          <span>Generate Video</span>
-        )}
-      </button>
-
-      {generationStatus.status === "error" && (
-        <div className="p-4 bg-red-50 text-red-700 rounded-lg">
-          {generationStatus.error}
-        </div>
-      )}
-
-      {generationStatus.status === "generating" && (
-        <div className="p-4 bg-purple-50 text-purple-700 rounded-lg">
-          <div className="flex items-center space-x-2">
-            <LoadingSpinner />
-            <span>{generationStatus.currentStep}</span>
-          </div>
-          <div className="mt-2 h-2 bg-purple-200 rounded-full">
-            <div
-              className="h-full bg-purple-600 rounded-full transition-all duration-300"
-              style={{ width: `${generationStatus.progress}%` }}
-            />
-          </div>
-        </div>
-      )}
-    </div>
-  );
 }
 
 export default function CreateVideoPage() {
   const searchParams = useSearchParams();
   const [script, setScript] = useState<YouTubeScript | null>(null);
-  const [selectedStyle, setSelectedStyle] = useState<VideoStyle | null>(null);
-  const [videos, setVideos] = useState<string[]>([]);
-  const [currentVideoIndex, setCurrentVideoIndex] = useState<number>(0);
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [generationProgress, setGenerationProgress] = useState(0);
+  const [error, setError] = useState("");
+  const [videoUrl, setVideoUrl] = useState("");
+  const [viewMode, setViewMode] = useState<"document" | "sections">("document");
+  const [documentContent, setDocumentContent] = useState("");
 
   useEffect(() => {
     const scriptParam = searchParams.get("script");
@@ -200,29 +39,258 @@ export default function CreateVideoPage() {
       try {
         const decodedScript = JSON.parse(decodeURIComponent(scriptParam));
         setScript(decodedScript);
-      } catch (error) {
-        console.error("Failed to parse script data:", error);
+        // Initialize document content
+        const content = formatScriptToDocument(decodedScript);
+        setDocumentContent(content);
+      } catch (err) {
+        console.error("Failed to parse script:", err);
+        setError("Failed to load script data");
       }
     }
   }, [searchParams]);
 
-  const handleVideoGenerated = (generatedVideos: string[]) => {
-    setVideos(generatedVideos);
-    if (generatedVideos.length > 0) {
-      setPreviewUrl(generatedVideos[0]);
-      setCurrentVideoIndex(0);
+  const formatScriptToDocument = (script: YouTubeScript): string => {
+    return `Title: ${script.title}
+
+Hook:
+${script.hook}
+
+${script.sections
+  .map(
+    (section) => `[${section.type}]
+${section.content}
+Notes: ${section.notes}
+`
+  )
+  .join("\n")}
+Call to Action:
+${script.callToAction}
+
+Metadata:
+Description: ${script.metadata.description}
+Tags: ${script.metadata.tags.join(", ")}
+Category: ${script.metadata.category}`;
+  };
+
+  const parseDocumentToScript = (document: string): YouTubeScript | null => {
+    try {
+      const lines = document.split("\n");
+      let currentScript: Partial<YouTubeScript> = {
+        sections: [],
+        metadata: {
+          tags: [],
+          description: "",
+          category: "",
+        },
+      };
+
+      let currentSection: Partial<ScriptSection> | null = null;
+      let mode: "none" | "hook" | "section" | "cta" | "metadata" = "none";
+
+      for (let line of lines) {
+        line = line.trim();
+        if (!line) continue;
+
+        if (line.startsWith("Title:")) {
+          currentScript.title = line.replace("Title:", "").trim();
+        } else if (line === "Hook:") {
+          mode = "hook";
+          currentScript.hook = "";
+        } else if (line.startsWith("[") && line.endsWith("]")) {
+          if (currentSection) {
+            (currentScript.sections as ScriptSection[]).push(
+              currentSection as ScriptSection
+            );
+          }
+          mode = "section";
+          currentSection = {
+            type: line.slice(1, -1),
+            content: "",
+            notes: "",
+          };
+        } else if (line === "Call to Action:") {
+          if (currentSection) {
+            (currentScript.sections as ScriptSection[]).push(
+              currentSection as ScriptSection
+            );
+            currentSection = null;
+          }
+          mode = "cta";
+          currentScript.callToAction = "";
+        } else if (line === "Metadata:") {
+          mode = "metadata";
+        } else {
+          switch (mode) {
+            case "hook":
+              currentScript.hook = (currentScript.hook || "") + line + "\n";
+              break;
+            case "section":
+              if (line.startsWith("Notes:")) {
+                if (currentSection) {
+                  currentSection.notes = line.replace("Notes:", "").trim();
+                }
+              } else {
+                if (currentSection) {
+                  currentSection.content =
+                    (currentSection.content || "") + line + "\n";
+                }
+              }
+              break;
+            case "cta":
+              currentScript.callToAction =
+                (currentScript.callToAction || "") + line + "\n";
+              break;
+            case "metadata":
+              if (line.startsWith("Description:")) {
+                currentScript.metadata!.description = line
+                  .replace("Description:", "")
+                  .trim();
+              } else if (line.startsWith("Tags:")) {
+                currentScript.metadata!.tags = line
+                  .replace("Tags:", "")
+                  .split(",")
+                  .map((tag) => tag.trim());
+              } else if (line.startsWith("Category:")) {
+                currentScript.metadata!.category = line
+                  .replace("Category:", "")
+                  .trim();
+              }
+              break;
+          }
+        }
+      }
+
+      // Add the last section if exists
+      if (currentSection) {
+        (currentScript.sections as ScriptSection[]).push(
+          currentSection as ScriptSection
+        );
+      }
+
+      // Clean up multiline strings
+      if (currentScript.hook) {
+        currentScript.hook = currentScript.hook.trim();
+      }
+      if (currentScript.callToAction) {
+        currentScript.callToAction = currentScript.callToAction.trim();
+      }
+      currentScript.sections = (currentScript.sections as ScriptSection[]).map(
+        (section) => ({
+          ...section,
+          content: section.content.trim(),
+        })
+      );
+
+      return currentScript as YouTubeScript;
+    } catch (err) {
+      console.error("Failed to parse document:", err);
+      return null;
+    }
+  };
+
+  const handleDocumentChange = (newContent: string) => {
+    setDocumentContent(newContent);
+    const newScript = parseDocumentToScript(newContent);
+    if (newScript) {
+      setScript(newScript);
+    }
+  };
+
+  const handleScriptChange = (
+    field: keyof YouTubeScript,
+    value: string | ScriptSection[]
+  ) => {
+    if (!script) return;
+
+    setScript((prev) => {
+      if (!prev) return prev;
+      const newScript = {
+        ...prev,
+        [field]: value,
+      };
+      // Update document content
+      setDocumentContent(formatScriptToDocument(newScript));
+      return newScript;
+    });
+  };
+
+  const handleSectionChange = (
+    index: number,
+    field: keyof ScriptSection,
+    value: string
+  ) => {
+    if (!script) return;
+
+    const newSections = [...script.sections];
+    newSections[index] = {
+      ...newSections[index],
+      [field]: value,
+    };
+
+    handleScriptChange("sections", newSections);
+  };
+
+  const handleGenerateVideo = async () => {
+    if (!script) return;
+
+    setIsGenerating(true);
+    setError("");
+    setGenerationProgress(0);
+
+    try {
+      const response = await fetch("/api/video/generate", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          script,
+          style: "modern",
+        }),
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || "Failed to generate video");
+      }
+
+      const reader = response.body?.getReader();
+      if (!reader) throw new Error("Failed to read response stream");
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        const chunk = new TextDecoder().decode(value);
+        try {
+          const data = JSON.parse(chunk);
+          if (data.progress) {
+            setGenerationProgress(data.progress);
+          }
+          if (data.url) {
+            setVideoUrl(data.url);
+          }
+        } catch (e) {
+          console.error("Failed to parse chunk:", e);
+        }
+      }
+    } catch (err) {
+      console.error("Video generation error:", err);
+      setError(err instanceof Error ? err.message : "Failed to generate video");
+    } finally {
+      setIsGenerating(false);
     }
   };
 
   if (!script) {
     return (
-      <div className="flex h-[80vh] items-center justify-center">
+      <div className="flex h-[60vh] items-center justify-center">
         <div className="text-center">
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-4">
+          <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
             No Script Found
-          </h1>
-          <p className="text-gray-600 dark:text-gray-400">
-            Please generate a script first before creating a video.
+          </h2>
+          <p className="mt-2 text-gray-600 dark:text-gray-400">
+            Please generate a script from the Viral Hub first.
           </p>
         </div>
       </div>
@@ -230,63 +298,212 @@ export default function CreateVideoPage() {
   }
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-      <div className="space-y-8">
-        <div className="border-b border-gray-200 dark:border-gray-700 pb-8">
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-4">
-            Create Video: {script.title}
-          </h1>
-          <p className="text-lg text-gray-600 dark:text-gray-400">
-            First, select a video style that best fits your content.
-          </p>
-        </div>
+    <div className="space-y-8">
+      <div>
+        <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
+          Create Video
+        </h1>
+        <p className="mt-2 text-gray-600 dark:text-gray-400">
+          Edit your script and generate a video
+        </p>
+      </div>
 
-        <Suspense fallback={<LoadingSpinner />}>
-          <div className="py-6">
-            <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-6">
-              Choose Your Style
-            </h2>
-            <VideoStyleSelector
-              onSelect={setSelectedStyle}
-              selectedStyle={selectedStyle || undefined}
+      {/* View Mode Toggle */}
+      <div className="flex space-x-4">
+        <button
+          onClick={() => setViewMode("document")}
+          className={`px-4 py-2 rounded-md ${
+            viewMode === "document"
+              ? "bg-purple-600 text-white"
+              : "bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-300"
+          }`}
+        >
+          Document View
+        </button>
+        <button
+          onClick={() => setViewMode("sections")}
+          className={`px-4 py-2 rounded-md ${
+            viewMode === "sections"
+              ? "bg-purple-600 text-white"
+              : "bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-300"
+          }`}
+        >
+          Sections View
+        </button>
+      </div>
+
+      <div className="space-y-6 rounded-lg bg-white p-6 shadow-sm dark:bg-gray-800">
+        {viewMode === "document" ? (
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              Script Document
+            </label>
+            <textarea
+              value={documentContent}
+              onChange={(e) => handleDocumentChange(e.target.value)}
+              rows={20}
+              className="w-full font-mono text-sm rounded-md border border-gray-300 px-3 py-2 text-gray-900 shadow-sm focus:border-purple-500 focus:outline-none focus:ring-1 focus:ring-purple-500 dark:border-gray-600 dark:bg-gray-900 dark:text-white"
             />
           </div>
+        ) : (
+          <>
+            {/* Title */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                Title
+              </label>
+              <input
+                type="text"
+                value={script.title}
+                onChange={(e) => handleScriptChange("title", e.target.value)}
+                className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-gray-900 shadow-sm focus:border-purple-500 focus:outline-none focus:ring-1 focus:ring-purple-500 dark:border-gray-600 dark:bg-gray-900 dark:text-white"
+              />
+            </div>
 
-          {selectedStyle && (
-            <div className="space-y-8 pt-6">
-              <div className="border-t border-gray-200 dark:border-gray-700 pt-8">
-                <VideoGenerationContent
-                  script={script}
-                  selectedStyle={selectedStyle}
-                  onComplete={handleVideoGenerated}
-                />
+            {/* Hook */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                Hook
+              </label>
+              <textarea
+                value={script.hook}
+                onChange={(e) => handleScriptChange("hook", e.target.value)}
+                rows={3}
+                className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-gray-900 shadow-sm focus:border-purple-500 focus:outline-none focus:ring-1 focus:ring-purple-500 dark:border-gray-600 dark:bg-gray-900 dark:text-white"
+              />
+            </div>
 
-                {previewUrl && (
-                  <div className="mt-8">
-                    <h3 className="text-xl font-semibold text-gray-900 dark:text-white mb-4">
-                      Preview
-                    </h3>
-                    <div className="aspect-video rounded-lg overflow-hidden bg-gray-900">
-                      <video
-                        src={previewUrl}
-                        className="w-full h-full"
-                        controls
-                        autoPlay
-                        onEnded={() => {
-                          if (videos.length > currentVideoIndex + 1) {
-                            setCurrentVideoIndex((prev) => prev + 1);
-                            setPreviewUrl(videos[currentVideoIndex + 1]);
-                          }
-                        }}
+            {/* Sections */}
+            <div className="space-y-4">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                Sections
+              </label>
+              {script.sections.map((section, index) => (
+                <div
+                  key={index}
+                  className="rounded-md border border-gray-200 p-4 dark:border-gray-700"
+                >
+                  <div className="space-y-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                        Type
+                      </label>
+                      <input
+                        type="text"
+                        value={section.type}
+                        onChange={(e) =>
+                          handleSectionChange(index, "type", e.target.value)
+                        }
+                        className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-gray-900 shadow-sm focus:border-purple-500 focus:outline-none focus:ring-1 focus:ring-purple-500 dark:border-gray-600 dark:bg-gray-900 dark:text-white"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                        Content
+                      </label>
+                      <textarea
+                        value={section.content}
+                        onChange={(e) =>
+                          handleSectionChange(index, "content", e.target.value)
+                        }
+                        rows={3}
+                        className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-gray-900 shadow-sm focus:border-purple-500 focus:outline-none focus:ring-1 focus:ring-purple-500 dark:border-gray-600 dark:bg-gray-900 dark:text-white"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                        Notes
+                      </label>
+                      <textarea
+                        value={section.notes}
+                        onChange={(e) =>
+                          handleSectionChange(index, "notes", e.target.value)
+                        }
+                        rows={2}
+                        className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-gray-900 shadow-sm focus:border-purple-500 focus:outline-none focus:ring-1 focus:ring-purple-500 dark:border-gray-600 dark:bg-gray-900 dark:text-white"
                       />
                     </div>
                   </div>
-                )}
-              </div>
+                </div>
+              ))}
             </div>
-          )}
-        </Suspense>
+
+            {/* Call to Action */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                Call to Action
+              </label>
+              <textarea
+                value={script.callToAction}
+                onChange={(e) =>
+                  handleScriptChange("callToAction", e.target.value)
+                }
+                rows={3}
+                className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-gray-900 shadow-sm focus:border-purple-500 focus:outline-none focus:ring-1 focus:ring-purple-500 dark:border-gray-600 dark:bg-gray-900 dark:text-white"
+              />
+            </div>
+          </>
+        )}
+
+        {/* Generate Button */}
+        <div className="flex justify-end">
+          <button
+            onClick={handleGenerateVideo}
+            disabled={isGenerating}
+            className="inline-flex items-center rounded-md bg-purple-600 px-4 py-2 text-sm font-medium text-white hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 disabled:opacity-50 dark:bg-purple-500 dark:hover:bg-purple-400"
+          >
+            {isGenerating ? (
+              <>
+                <svg
+                  className="mr-2 h-4 w-4 animate-spin"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                >
+                  <circle
+                    className="opacity-25"
+                    cx="12"
+                    cy="12"
+                    r="10"
+                    stroke="currentColor"
+                    strokeWidth="4"
+                  />
+                  <path
+                    className="opacity-75"
+                    fill="currentColor"
+                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                  />
+                </svg>
+                Generating Video ({generationProgress}%)
+              </>
+            ) : (
+              "Generate Video"
+            )}
+          </button>
+        </div>
       </div>
+
+      {/* Error Message */}
+      {error && (
+        <div className="rounded-lg bg-red-50 p-4 text-red-700 dark:bg-red-900/30 dark:text-red-400">
+          {error}
+        </div>
+      )}
+
+      {/* Video Preview */}
+      {videoUrl && (
+        <div className="rounded-lg bg-white p-6 shadow-sm dark:bg-gray-800">
+          <h2 className="mb-4 text-lg font-semibold text-gray-900 dark:text-white">
+            Generated Video
+          </h2>
+          <video
+            controls
+            className="aspect-video w-full rounded-lg"
+            src={videoUrl}
+          >
+            Your browser does not support the video tag.
+          </video>
+        </div>
+      )}
     </div>
   );
 }
