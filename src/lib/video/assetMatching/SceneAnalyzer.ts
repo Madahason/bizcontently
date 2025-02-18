@@ -1,4 +1,4 @@
-import OpenAI from "openai";
+import Anthropic from "@anthropic-ai/sdk";
 import { SceneElement, VisualSearchCriteria } from "./types";
 
 interface AnalysisResult {
@@ -9,33 +9,40 @@ interface AnalysisResult {
 }
 
 export class SceneAnalyzer {
-  private openai: OpenAI;
+  private anthropic: Anthropic;
 
   constructor() {
     // Get API key from environment variable
-    const apiKey = process.env.OPENAI_API_KEY;
+    const apiKey = process.env.ANTHROPIC_API_KEY;
 
     if (!apiKey) {
+      console.error("Anthropic API key not found in environment variables");
       throw new Error(
-        "OpenAI API key is not configured. Please add a valid API key to your .env file. You can get one from https://platform.openai.com/api-keys"
+        "Anthropic API key is not configured. Please add a valid API key to your .env file."
       );
     }
 
-    if (apiKey.startsWith("sk-proj-")) {
+    try {
+      this.anthropic = new Anthropic({
+        apiKey: apiKey,
+      });
+    } catch (error) {
+      console.error("Failed to initialize Anthropic client:", error);
       throw new Error(
-        "Project-scoped API keys (starting with 'sk-proj-') are not supported. Please use a regular API key from https://platform.openai.com/api-keys"
+        "Failed to initialize Anthropic client. Please check your API key configuration."
       );
     }
-
-    this.openai = new OpenAI({
-      apiKey: apiKey,
-    });
   }
 
-  private async analyzeWithGPT(
+  private async analyzeWithClaude(
     sceneDescription: string
   ): Promise<AnalysisResult> {
     try {
+      // Validate input
+      if (!sceneDescription || sceneDescription.trim().length === 0) {
+        throw new Error("Scene description cannot be empty");
+      }
+
       const prompt = `Analyze the following scene description and extract key visual elements. Format the response as JSON with the following structure:
 {
   "elements": [
@@ -53,56 +60,71 @@ export class SceneAnalyzer {
   "colorScheme": ["primary color", "secondary color", "accent color"]
 }
 
-Scene description: "${sceneDescription}"`;
+Scene description: "${sceneDescription}"
 
-      const completion = await this.openai.chat.completions.create({
-        model: "gpt-4",
-        messages: [
-          {
-            role: "system",
-            content:
-              "You are a professional cinematographer and visual analyst. Extract visual elements from scene descriptions.",
-          },
-          {
-            role: "user",
-            content: prompt,
-          },
-        ],
+Respond with ONLY the JSON, no other text.`;
+
+      const message = await this.anthropic.messages.create({
+        model: "claude-3-opus-20240229",
+        max_tokens: 1024,
         temperature: 0.7,
+        system:
+          "You are a professional cinematographer and visual analyst. Extract visual elements from scene descriptions. Respond with valid JSON only.",
+        messages: [{ role: "user", content: prompt }],
       });
 
-      const content = completion.choices[0].message.content;
-      if (!content) {
-        throw new Error("Failed to get analysis from GPT-4: Empty response");
+      // Get the first content block and ensure it's text
+      const contentBlock = message.content[0];
+      if (!contentBlock || contentBlock.type !== "text" || !contentBlock.text) {
+        throw new Error("Invalid response format from Claude");
       }
 
+      // Clean and parse the response
+      const cleanedText = contentBlock.text.trim();
       try {
-        return JSON.parse(content.trim()) as AnalysisResult;
-      } catch (error) {
-        console.error("Failed to parse GPT response:", content);
-        throw new Error(
-          `Invalid response format from GPT-4: ${
-            error instanceof Error ? error.message : "Unknown parsing error"
-          }`
-        );
+        const result = JSON.parse(cleanedText);
+        return this.validateAnalysisResult(result);
+      } catch (parseError) {
+        console.error("Failed to parse Claude response:", cleanedText);
+        console.error("Parse error:", parseError);
+        throw new Error("Invalid JSON response from Claude");
       }
     } catch (error) {
-      if (error instanceof Error && error.message.includes("API key")) {
-        throw error; // Re-throw API key related errors
-      }
-      console.error("GPT analysis error:", error);
-      throw new Error(
-        `Failed to analyze scene with GPT-4: ${
-          error instanceof Error ? error.message : "Unknown error"
-        }`
-      );
+      console.error("Claude analysis error:", error);
+      throw error;
     }
+  }
+
+  private validateAnalysisResult(result: any): AnalysisResult {
+    // Validate required fields
+    if (!result.elements || !Array.isArray(result.elements)) {
+      throw new Error("Invalid response: missing or invalid elements array");
+    }
+    if (!result.style || typeof result.style !== "string") {
+      throw new Error("Invalid response: missing or invalid style");
+    }
+    if (!result.mood || typeof result.mood !== "string") {
+      throw new Error("Invalid response: missing or invalid mood");
+    }
+    if (!result.colorScheme || !Array.isArray(result.colorScheme)) {
+      throw new Error("Invalid response: missing or invalid colorScheme");
+    }
+
+    // Validate and clean up elements
+    result.elements = result.elements.map((element: any) => ({
+      type: element.type || "object",
+      description: element.description || "",
+      importance: Math.max(0, Math.min(1, element.importance || 0.5)),
+      attributes: element.attributes || {},
+    }));
+
+    return result as AnalysisResult;
   }
 
   public async analyzeScene(
     sceneDescription: string
   ): Promise<VisualSearchCriteria> {
-    const analysis = await this.analyzeWithGPT(sceneDescription);
+    const analysis = await this.analyzeWithClaude(sceneDescription);
 
     // Validate and process the elements
     const validatedElements = analysis.elements.map((element) => ({

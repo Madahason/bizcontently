@@ -1,16 +1,28 @@
 import { NextResponse } from "next/server";
 import { SceneAnalyzer } from "@/lib/video/assetMatching/SceneAnalyzer";
-import type { VisualSearchCriteria } from "@/lib/video/assetMatching/types";
 
 export async function POST(req: Request) {
   try {
-    const body = await req.json();
-    const { sceneDescription } = body;
+    const { sceneDescription } = await req.json();
 
     if (!sceneDescription) {
       return NextResponse.json(
-        { error: "Scene description is required" },
+        {
+          error: "Scene description is required",
+          details: "The request body must include a sceneDescription field",
+        },
         { status: 400 }
+      );
+    }
+
+    if (!process.env.ANTHROPIC_API_KEY) {
+      console.error("Anthropic API key not found in environment variables");
+      return NextResponse.json(
+        {
+          error: "Server Configuration Error",
+          details: "Anthropic API key is not configured on the server",
+        },
+        { status: 500 }
       );
     }
 
@@ -23,7 +35,8 @@ export async function POST(req: Request) {
     return NextResponse.json(
       {
         error: "Failed to analyze scene",
-        details: error instanceof Error ? error.message : "Unknown error",
+        details:
+          error instanceof Error ? error.message : "Unknown error occurred",
       },
       { status: 500 }
     );

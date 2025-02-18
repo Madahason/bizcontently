@@ -1,8 +1,5 @@
 import { NextResponse } from "next/server";
-import OpenAI from "openai";
-
-const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
-const openai = new OpenAI({ apiKey: OPENAI_API_KEY });
+import Anthropic from "@anthropic-ai/sdk";
 
 interface ContentAnalysis {
   hooks: {
@@ -54,6 +51,14 @@ async function analyzeContentStructure(
     throw new Error("Timestamps array is empty or invalid");
   }
 
+  // Initialize Anthropic client inside the function
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) {
+    throw new Error("Anthropic API key is not configured");
+  }
+
+  const anthropic = new Anthropic({ apiKey });
+
   // Limit transcript length if needed
   const maxChars = 12000; // Approximately 3000 tokens
   let truncatedTranscript = transcript;
@@ -63,14 +68,13 @@ async function analyzeContentStructure(
   }
 
   try {
-    console.log("Starting OpenAI analysis...");
+    console.log("Starting Claude analysis...");
 
-    const response = await openai.chat.completions.create({
-      model: "gpt-4",
-      messages: [
-        {
-          role: "system",
-          content: `You are an expert content strategist and video analyst. Analyze this transcript to identify content structure, hooks, and engagement patterns. Focus on:
+    const response = await anthropic.messages.create({
+      model: "claude-3-opus-20240229",
+      max_tokens: 2000,
+      temperature: 0.7,
+      system: `You are an expert content strategist and video analyst. Analyze this transcript to identify content structure, hooks, and engagement patterns. Focus on:
 1. Hooks & attention-grabbing moments
 2. Call-to-Actions (explicit & implicit)
 3. Content structure & flow
@@ -79,7 +83,7 @@ async function analyzeContentStructure(
 6. Strategic recommendations
 
 You must respond with valid JSON only. No other text before or after the JSON object.`,
-        },
+      messages: [
         {
           role: "user",
           content: `Analyze this transcript and provide timestamps and ratings where relevant.
@@ -105,33 +109,37 @@ Respond with this exact JSON structure (no other text):
 }`,
         },
       ],
-      temperature: 0.7,
-      max_tokens: 2000,
     });
 
-    if (!response.choices[0]?.message?.content) {
-      throw new Error("Empty or invalid response from OpenAI");
+    const content = response.content[0];
+    if (!content || content.type !== "text" || !content.text) {
+      throw new Error("Empty or invalid response from Claude");
     }
 
-    const result = JSON.parse(response.choices[0].message.content);
+    try {
+      const result = JSON.parse(content.text);
 
-    // Ensure all required fields exist
-    const defaultStructure = {
-      hooks: [],
-      callToAction: [],
-      keyTalkingPoints: [],
-      contentStructure: [],
-      engagementTechniques: [],
-      recommendations: [],
-    };
+      // Ensure all required fields exist
+      const defaultStructure = {
+        hooks: [],
+        callToAction: [],
+        keyTalkingPoints: [],
+        contentStructure: [],
+        engagementTechniques: [],
+        recommendations: [],
+      };
 
-    return { ...defaultStructure, ...result };
+      return { ...defaultStructure, ...result };
+    } catch (parseError) {
+      console.error("Failed to parse Claude response:", content.text);
+      throw new Error("Invalid JSON response from Claude");
+    }
   } catch (error) {
-    console.error("OpenAI Analysis Error:", error);
+    console.error("Claude Analysis Error:", error);
     if (error instanceof Error) {
       if (error.message.includes("Rate limit")) {
         throw new Error(
-          "OpenAI rate limit exceeded. Please try again in a moment."
+          "API rate limit exceeded. Please try again in a moment."
         );
       }
       if (error.message.includes("maximum context length")) {
@@ -141,7 +149,7 @@ Respond with this exact JSON structure (no other text):
       }
       throw new Error(`Failed to analyze content structure: ${error.message}`);
     }
-    throw new Error("Failed to analyze content structure with OpenAI");
+    throw new Error("Failed to analyze content structure");
   }
 }
 

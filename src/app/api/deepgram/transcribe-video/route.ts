@@ -1,9 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSubtitles } from "youtube-caption-extractor";
-import OpenAI from "openai";
-
-const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
-const openai = new OpenAI({ apiKey: OPENAI_API_KEY });
+import Anthropic from "@anthropic-ai/sdk";
 
 interface Subtitle {
   start: string;
@@ -76,45 +73,93 @@ async function getYouTubeTranscript(videoId: string): Promise<TranscriptData> {
 
 async function analyzeTranscript(transcriptData: TranscriptData) {
   try {
-    const response = await openai.chat.completions.create({
-      model: "gpt-3.5-turbo",
+    // Initialize Anthropic client inside the function
+    const apiKey = process.env.ANTHROPIC_API_KEY;
+    if (!apiKey) {
+      throw new Error("Anthropic API key is not configured");
+    }
+
+    const anthropic = new Anthropic({ apiKey });
+
+    const response = await anthropic.messages.create({
+      model: "claude-3-opus-20240229",
+      max_tokens: 1024,
+      temperature: 0.3,
+      system:
+        "You are an expert at analyzing video transcripts. You must respond with valid JSON only, no other text. Analyze the transcript and provide a summary, key topics, and important entities.",
       messages: [
         {
-          role: "system",
-          content:
-            "You are an expert at analyzing video transcripts. Provide a concise summary, key topics, and identify important entities (people, organizations, products, etc.) mentioned in the transcript.",
-        },
-        {
           role: "user",
-          content: `Please analyze this transcript and provide:
-1. A concise summary (2-3 sentences)
-2. Main topics (as an array of single words or short phrases)
-3. Key entities mentioned (with their types)
+          content: `Analyze this transcript and provide a structured analysis. Respond with ONLY valid JSON, no other text.
 
 Transcript:
 ${transcriptData.transcript}
 
-Format your response as JSON like this:
+Required JSON structure:
 {
-  "summary": "...",
-  "topics": ["topic1", "topic2", ...],
-  "entities": [{"text": "entity name", "type": "person/organization/product/etc"}]
+  "summary": "2-3 sentence summary",
+  "topics": ["topic1", "topic2", "..."],
+  "entities": [
+    {
+      "text": "entity name",
+      "type": "person/organization/product/location/concept"
+    }
+  ]
 }`,
         },
       ],
-      temperature: 0.3,
-      response_format: { type: "json_object" },
     });
 
-    if (!response.choices[0]?.message?.content) {
-      throw new Error("Empty or invalid response from OpenAI");
+    const content = response.content[0];
+    if (!content || content.type !== "text" || !content.text) {
+      throw new Error("Empty or invalid response from Claude");
     }
 
-    const result = JSON.parse(response.choices[0].message.content);
-    return result;
+    // Clean the response text to ensure it's valid JSON
+    const cleanedText = content.text.trim();
+
+    try {
+      const result = JSON.parse(cleanedText);
+
+      // Validate the response structure
+      if (
+        !result.summary ||
+        !Array.isArray(result.topics) ||
+        !Array.isArray(result.entities)
+      ) {
+        throw new Error("Invalid response structure from Claude");
+      }
+
+      // Ensure all required fields exist with default values if needed
+      return {
+        summary: result.summary || "",
+        topics: result.topics || [],
+        entities: result.entities.map((entity: any) => ({
+          text: entity.text || "",
+          type: entity.type || "unknown",
+        })),
+      };
+    } catch (parseError) {
+      console.error("Failed to parse Claude response:", cleanedText);
+      console.error("Parse error:", parseError);
+      throw new Error("Invalid JSON response from Claude");
+    }
   } catch (error) {
-    console.error("OpenAI Analysis Error:", error);
-    throw new Error("Failed to analyze transcript with OpenAI");
+    console.error("Claude Analysis Error:", error);
+    if (error instanceof Error) {
+      if (error.message.includes("rate limits")) {
+        throw new Error(
+          "API rate limit exceeded. Please try again in a moment."
+        );
+      }
+      if (error.message.includes("maximum context length")) {
+        throw new Error(
+          "Transcript is too long for analysis. Please try a shorter video."
+        );
+      }
+      throw new Error(`Failed to analyze transcript: ${error.message}`);
+    }
+    throw new Error("Failed to analyze transcript");
   }
 }
 
@@ -154,10 +199,10 @@ export async function POST(req: Request) {
     const transcriptData = await getYouTubeTranscript(videoId);
     console.log("Transcript obtained successfully");
 
-    // Analyze the transcript with OpenAI
-    console.log("Analyzing transcript with OpenAI...");
+    // Analyze the transcript with Claude
+    console.log("Analyzing transcript with Claude...");
     const analysis = await analyzeTranscript(transcriptData);
-    console.log("OpenAI analysis complete");
+    console.log("Claude analysis complete");
 
     // Format the response
     const formattedResponse = {

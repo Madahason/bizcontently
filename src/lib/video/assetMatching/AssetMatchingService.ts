@@ -11,11 +11,9 @@ import {
 
 export class AssetMatchingService {
   private providers: Map<string, BaseAssetProvider> = new Map();
-  private sceneAnalyzer: SceneAnalyzer;
   private authManager: ProviderAuthManager;
 
   constructor() {
-    this.sceneAnalyzer = new SceneAnalyzer();
     this.authManager = new ProviderAuthManager();
     this.initializeProviders();
   }
@@ -68,46 +66,62 @@ export class AssetMatchingService {
     sceneDescription: string,
     options: Partial<VisualSearchCriteria> = {}
   ): Promise<AssetSearchResult[]> {
-    // First, analyze the scene to get detailed criteria
-    const baseCriteria = await this.sceneAnalyzer.analyzeScene(
-      sceneDescription
-    );
-
-    // Merge with provided options
-    const searchCriteria: VisualSearchCriteria = {
-      ...baseCriteria,
-      ...options,
-      sceneDescription,
-    };
-
-    // Search across all enabled providers
-    const searchPromises = Array.from(this.providers.values()).map((provider) =>
-      this.searchProvider(provider, searchCriteria)
-    );
-
-    const results = await Promise.allSettled(searchPromises);
-
-    // Collect and sort all successful results
-    const allAssets = results
-      .filter(
-        (result): result is PromiseFulfilledResult<AssetSearchResult[]> =>
-          result.status === "fulfilled"
-      )
-      .map((result) => result.value)
-      .flat()
-      .sort((a, b) => b.confidence - a.confidence);
-
-    // Log any provider errors
-    results
-      .filter(
-        (result): result is PromiseRejectedResult =>
-          result.status === "rejected"
-      )
-      .forEach((result) => {
-        console.error("Provider search failed:", result.reason);
+    try {
+      // Call the scene analysis API endpoint instead of using SceneAnalyzer directly
+      const response = await fetch("/api/scene/analyze", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ sceneDescription }),
       });
 
-    return allAssets;
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.details || "Failed to analyze scene");
+      }
+
+      const searchCriteria: VisualSearchCriteria = await response.json();
+
+      // Merge with provided options
+      const finalCriteria = {
+        ...searchCriteria,
+        ...options,
+        sceneDescription,
+      };
+
+      // Search across all enabled providers
+      const searchPromises = Array.from(this.providers.values()).map(
+        (provider) => this.searchProvider(provider, finalCriteria)
+      );
+
+      const results = await Promise.allSettled(searchPromises);
+
+      // Collect and sort all successful results
+      const allAssets = results
+        .filter(
+          (result): result is PromiseFulfilledResult<AssetSearchResult[]> =>
+            result.status === "fulfilled"
+        )
+        .map((result) => result.value)
+        .flat()
+        .sort((a, b) => b.confidence - a.confidence);
+
+      // Log any provider errors
+      results
+        .filter(
+          (result): result is PromiseRejectedResult =>
+            result.status === "rejected"
+        )
+        .forEach((result) => {
+          console.error("Provider search failed:", result.reason);
+        });
+
+      return allAssets;
+    } catch (error) {
+      console.error("Error in findAssets:", error);
+      throw error;
+    }
   }
 
   private async searchProvider(
