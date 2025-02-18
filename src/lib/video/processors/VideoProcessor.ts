@@ -4,6 +4,8 @@ import axios from "axios";
 import { v4 as uuidv4 } from "uuid";
 import { StockTemplateEngine } from "../engines/StockTemplateEngine";
 import type { Scene } from "@/lib/ai/scriptAnalysis";
+import { AssetMatchingService } from "../assetMatching/AssetMatchingService";
+import { VisualSearchCriteria } from "../assetMatching/types";
 
 interface TextOverlay {
   text: string;
@@ -28,12 +30,14 @@ export class VideoProcessor {
     scenes: Scene[];
     globalStyle: string;
   };
+  private assetMatcher: AssetMatchingService;
 
   constructor(config: VideoProcessorConfig) {
     this.outputDir = path.join(process.cwd(), "public", "videos");
     this.ensureDirectories();
     this.templateEngine = config.templateEngine;
     this.enhancedSettings = config.enhancedSettings;
+    this.assetMatcher = new AssetMatchingService();
   }
 
   private ensureDirectories() {
@@ -121,6 +125,29 @@ export class VideoProcessor {
     }
   }
 
+  private async findStockFootage(section: any): Promise<string[]> {
+    try {
+      const searchCriteria: VisualSearchCriteria = {
+        sceneDescription: section.content,
+        style: this.enhancedSettings.globalStyle,
+        elements: section.settings?.elements || [],
+        mood: section.settings?.sentiment?.mood,
+        colorScheme: section.settings?.visualStyle?.colorScheme,
+      };
+
+      const assets = await this.assetMatcher.findAssets(
+        section.content,
+        searchCriteria
+      );
+
+      // Return the URLs of the top matching assets
+      return assets.slice(0, 3).map((asset) => asset.url);
+    } catch (error) {
+      console.error("Error finding stock footage:", error);
+      return [];
+    }
+  }
+
   async generateVideo(
     script: any,
     onProgress: (progress: number) => Promise<void>
@@ -140,6 +167,9 @@ export class VideoProcessor {
       const videos: string[] = [];
 
       for (const [index, section] of sections.entries()) {
+        // Find appropriate stock footage using the asset matcher
+        const stockFootage = await this.findStockFootage(section);
+
         // Apply scene-specific settings if available
         const visualSettings = section.settings
           ? {
@@ -167,6 +197,7 @@ export class VideoProcessor {
             globalStyle: this.enhancedSettings.globalStyle,
           },
           music: musicSettings,
+          stockFootage, // Pass the found stock footage
         });
 
         videos.push(sectionVideo);

@@ -37,6 +37,7 @@ interface SectionConfig {
     tempo?: string;
     mood?: string;
   };
+  stockFootage?: string[];
 }
 
 export class StockTemplateEngine extends BaseTemplateEngine {
@@ -234,12 +235,14 @@ export class StockTemplateEngine extends BaseTemplateEngine {
 
   async createSection(config: SectionConfig): Promise<string> {
     try {
-      // Use the visual style settings to find appropriate stock footage
-      const stockFootage = await this.findStockFootage({
-        keywords: config.visualStyle.keywords || [],
-        lighting: config.visualStyle.lighting,
-        style: config.visualStyle.globalStyle,
-      });
+      // Use provided stock footage if available, otherwise find new footage
+      const stockFootage =
+        config.stockFootage ||
+        (await this.findStockFootage({
+          keywords: config.visualStyle.keywords || [],
+          lighting: config.visualStyle.lighting,
+          style: config.visualStyle.globalStyle,
+        }));
 
       // Apply visual effects based on pace and mood
       const visualEffects = this.getVisualEffects(config.visualStyle);

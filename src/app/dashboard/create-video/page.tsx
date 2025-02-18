@@ -1,9 +1,10 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useSearchParams } from "next/navigation";
+import { useSearchParams, useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import type { Scene } from "@/lib/ai/scriptAnalysis";
+import { AssetMatchingService } from "@/lib/video/assetMatching/AssetMatchingService";
 
 interface ScriptSection {
   type: string;
@@ -32,6 +33,7 @@ interface ApiError {
 }
 
 export default function CreateVideoPage() {
+  const router = useRouter();
   const searchParams = useSearchParams();
   const [script, setScript] = useState<YouTubeScript | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -42,6 +44,11 @@ export default function CreateVideoPage() {
   const [documentContent, setDocumentContent] = useState("");
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysisError, setAnalysisError] = useState<ApiError | null>(null);
+  const [showConfigModal, setShowConfigModal] = useState(false);
+  const [retryAttempt, setRetryAttempt] = useState(0);
+  const [retryDelay, setRetryDelay] = useState(0);
+
+  const assetMatcher = new AssetMatchingService();
 
   useEffect(() => {
     const scriptParam = searchParams.get("script");
@@ -240,83 +247,26 @@ Category: ${script.metadata.category}`;
     handleScriptChange("sections", newSections);
   };
 
+  const checkProviderConfiguration = () => {
+    const providers = assetMatcher.getProviders();
+    if (providers.length === 0) {
+      setShowConfigModal(true);
+      return false;
+    }
+    return true;
+  };
+
   const handleGenerateVideo = async () => {
     if (!script) return;
 
-    setIsGenerating(true);
-    setError("");
-    setGenerationProgress(0);
-
-    try {
-      // Prepare enhanced video generation payload
-      const videoGenerationPayload = {
-        script,
-        style: "modern",
-        sceneSettings: script.sections
-          .map((section) => {
-            if (!section.scene) return null;
-
-            return {
-              type: section.scene.type,
-              visualStyle: {
-                lighting: section.scene.visualStyle.lighting,
-                pace: section.scene.visualStyle.pace,
-                colorScheme: section.scene.visualStyle.colorScheme,
-              },
-              music: {
-                genre: section.scene.suggestedMusic.genre,
-                tempo: section.scene.suggestedMusic.tempo,
-                mood: section.scene.suggestedMusic.mood,
-              },
-              sentiment: {
-                mood: section.scene.sentiment.mood,
-                intensity: section.scene.sentiment.intensity,
-              },
-              keywords: section.scene.keywords,
-            };
-          })
-          .filter(Boolean), // Remove null values for unanalyzed sections
-      };
-
-      const response = await fetch("/api/video/generate", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(videoGenerationPayload),
-      });
-
-      if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.error || "Failed to generate video");
-      }
-
-      const reader = response.body?.getReader();
-      if (!reader) throw new Error("Failed to read response stream");
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        const chunk = new TextDecoder().decode(value);
-        try {
-          const data = JSON.parse(chunk);
-          if (data.progress) {
-            setGenerationProgress(data.progress);
-          }
-          if (data.url) {
-            setVideoUrl(data.url);
-          }
-        } catch (e) {
-          console.error("Failed to parse chunk:", e);
-        }
-      }
-    } catch (err) {
-      console.error("Video generation error:", err);
-      setError(err instanceof Error ? err.message : "Failed to generate video");
-    } finally {
-      setIsGenerating(false);
+    // First analyze the script if not already analyzed
+    if (!script.sections.some((section) => section.scene)) {
+      await analyzeScriptContent();
     }
+
+    // Redirect to scene editor with the script data
+    const encodedScript = encodeURIComponent(JSON.stringify(script));
+    router.push(`/dashboard/create-video/scene-editor?script=${encodedScript}`);
   };
 
   const analyzeScriptContent = async () => {
@@ -324,42 +274,92 @@ Category: ${script.metadata.category}`;
 
     setIsAnalyzing(true);
     setAnalysisError(null);
+    setRetryAttempt(0);
+    setRetryDelay(0);
+
+    const MAX_RETRIES = 3;
+    const BASE_DELAY = 5000; // 5 seconds base delay
+
+    const attemptAnalysis = async (attempt: number): Promise<any> => {
+      try {
+        setRetryAttempt(attempt);
+        console.log(`Analysis attempt ${attempt}/${MAX_RETRIES}`);
+        const scriptContent = formatScriptToDocument(script);
+
+        const response = await fetch("/api/script/analyze", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            script: scriptContent,
+          }),
+        });
+
+        const data = await response.json();
+
+        // Handle different response statuses
+        if (response.status === 503) {
+          // Service is overloaded
+          const retryAfter = parseInt(
+            response.headers.get("Retry-After") || "5"
+          );
+          if (attempt < MAX_RETRIES) {
+            const delay = retryAfter * 1000 * attempt; // Exponential backoff
+            setRetryDelay(delay / 1000);
+            console.log(
+              `Service overloaded, retrying in ${delay / 1000} seconds...`
+            );
+            await new Promise((resolve) => setTimeout(resolve, delay));
+            return attemptAnalysis(attempt + 1);
+          }
+          throw new Error(
+            "Service is temporarily unavailable. Please try again later."
+          );
+        }
+
+        if (!response.ok) {
+          console.error("Analysis request failed:", data);
+          throw new Error(
+            data.details || data.error || "Failed to analyze script"
+          );
+        }
+
+        if (!data.scenes || !Array.isArray(data.scenes)) {
+          console.error("Invalid analysis response:", data);
+          throw new Error("Invalid analysis response format");
+        }
+
+        return data;
+      } catch (error) {
+        if (
+          attempt < MAX_RETRIES &&
+          error instanceof Error &&
+          (error.message.includes("overloaded") ||
+            error.message.includes("temporarily unavailable"))
+        ) {
+          const delay = BASE_DELAY * attempt;
+          console.log(`Retrying analysis in ${delay / 1000} seconds...`);
+          await new Promise((resolve) => setTimeout(resolve, delay));
+          return attemptAnalysis(attempt + 1);
+        }
+        throw error;
+      }
+    };
 
     try {
-      console.log("Preparing script for analysis");
-      const scriptContent = formatScriptToDocument(script);
-
-      const response = await fetch("/api/script/analyze", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          script: scriptContent,
-        }),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        console.error("Analysis request failed:", data);
-        throw new Error(
-          data.details || data.error || "Failed to analyze script"
-        );
-      }
-
-      if (!data.scenes || !Array.isArray(data.scenes)) {
-        console.error("Invalid analysis response:", data);
-        throw new Error("Invalid analysis response format");
-      }
+      const data = await attemptAnalysis(1);
 
       // Update sections with scene analysis
-      const updatedSections = script.sections.map((section, index) => ({
-        ...section,
-        scene: data.scenes[index],
-      }));
+      const updatedSections = script.sections.map(
+        (section: any, index: number) => ({
+          ...section,
+          scene: data.scenes[index],
+        })
+      );
 
       handleScriptChange("sections", updatedSections);
+      setAnalysisError(null);
     } catch (err) {
       console.error("Script analysis error:", err);
       setAnalysisError({
@@ -370,6 +370,8 @@ Category: ${script.metadata.category}`;
       });
     } finally {
       setIsAnalyzing(false);
+      setRetryAttempt(0);
+      setRetryDelay(0);
     }
   };
 
@@ -450,13 +452,45 @@ Category: ${script.metadata.category}`;
                   d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
                 ></path>
               </svg>
-              Analyzing Script...
+              {retryAttempt > 1 ? (
+                <span>
+                  Retry Attempt {retryAttempt}/3
+                  {retryDelay > 0 && ` (Retrying in ${retryDelay}s)`}
+                </span>
+              ) : (
+                "Analyzing Script..."
+              )}
             </>
           ) : (
             "Analyze Script"
           )}
         </button>
       </div>
+
+      {/* Add retry progress indicator */}
+      {isAnalyzing && retryAttempt > 1 && (
+        <div className="mt-4 bg-blue-50 dark:bg-blue-900/30 rounded-lg p-4">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-sm font-medium text-blue-700 dark:text-blue-300">
+              Analysis Retry Progress
+            </span>
+            <span className="text-sm text-blue-600 dark:text-blue-400">
+              Attempt {retryAttempt}/3
+            </span>
+          </div>
+          <div className="w-full bg-blue-200 dark:bg-blue-800 rounded-full h-2.5">
+            <div
+              className="bg-blue-600 h-2.5 rounded-full transition-all duration-300"
+              style={{ width: `${(retryAttempt / 3) * 100}%` }}
+            ></div>
+          </div>
+          {retryDelay > 0 && (
+            <p className="mt-2 text-sm text-blue-600 dark:text-blue-400">
+              Next attempt in {retryDelay} seconds...
+            </p>
+          )}
+        </div>
+      )}
 
       {analysisError && (
         <div className="rounded-lg bg-red-50 p-4 text-red-700 dark:bg-red-900/30 dark:text-red-400">
@@ -791,6 +825,35 @@ Category: ${script.metadata.category}`;
           >
             Your browser does not support the video tag.
           </video>
+        </div>
+      )}
+
+      {/* Configuration Modal */}
+      {showConfigModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white dark:bg-gray-800 p-6 rounded-lg max-w-md">
+            <h3 className="text-lg font-semibold mb-2 text-gray-900 dark:text-white">
+              Configuration Required
+            </h3>
+            <p className="text-gray-600 dark:text-gray-400 mb-4">
+              Please configure your asset providers (Pexels, Unsplash) before
+              generating videos.
+            </p>
+            <div className="flex justify-end space-x-3">
+              <button
+                onClick={() => router.push("/dashboard/settings/providers")}
+                className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+              >
+                Configure Now
+              </button>
+              <button
+                onClick={() => setShowConfigModal(false)}
+                className="px-4 py-2 bg-gray-200 text-gray-800 rounded hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
