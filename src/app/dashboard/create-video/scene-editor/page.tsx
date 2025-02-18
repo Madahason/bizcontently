@@ -5,6 +5,8 @@ import { useSearchParams } from "next/navigation";
 import { AssetMatchingService } from "@/lib/video/assetMatching/AssetMatchingService";
 import type { Scene } from "@/lib/ai/scriptAnalysis";
 import type { AssetSearchResult } from "@/lib/video/assetMatching/types";
+import VoiceCustomizer from "@/app/components/narration/VoiceCustomizer";
+import TransitionSelector from "@/app/components/transitions/TransitionSelector";
 
 interface SceneAssets {
   suggested: AssetSearchResult[];
@@ -24,6 +26,10 @@ export default function SceneEditorPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<AssetSearchResult[]>([]);
   const [error, setError] = useState("");
+  const [narrationUrl, setNarrationUrl] = useState<string | null>(null);
+  const [narrationError, setNarrationError] = useState<string | null>(null);
+  const [currentTransition, setCurrentTransition] =
+    useState<TransitionConfig | null>(null);
 
   const assetMatcher = new AssetMatchingService();
 
@@ -40,6 +46,12 @@ export default function SceneEditorPage() {
       }
     }
   }, [searchParams]);
+
+  useEffect(() => {
+    if (script?.sections?.[currentScene]?.transition) {
+      setCurrentTransition(script.sections[currentScene].transition);
+    }
+  }, [script, currentScene]);
 
   const loadAssetsForScene = async (sceneIndex: number, scriptData: any) => {
     if (!scriptData?.sections?.[sceneIndex]) return;
@@ -142,6 +154,24 @@ export default function SceneEditorPage() {
     setSearchQuery("");
   };
 
+  const handleTransitionChange = (config: TransitionConfig) => {
+    setCurrentTransition(config);
+    if (script?.sections?.[currentScene]) {
+      const updatedSection = {
+        ...script.sections[currentScene],
+        transition: config,
+      };
+      const updatedScript = {
+        ...script,
+        sections: {
+          ...script.sections,
+          [currentScene]: updatedSection,
+        },
+      };
+      setScript(updatedScript);
+    }
+  };
+
   if (!script) {
     return (
       <div className="flex h-[60vh] items-center justify-center">
@@ -161,7 +191,7 @@ export default function SceneEditorPage() {
   const currentAssets = sceneAssets[currentScene];
 
   return (
-    <div className="space-y-8 p-6">
+    <div className="space-y-8 p-6 pt-40">
       <div className="flex justify-between items-center">
         <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
           Scene {currentScene + 1} of {script.sections.length}
@@ -210,6 +240,27 @@ export default function SceneEditorPage() {
                 {keyword}
               </span>
             ))}
+          </div>
+        )}
+      </div>
+
+      {/* Voice Narration */}
+      <div className="bg-white dark:bg-gray-800 rounded-lg p-6 shadow-sm">
+        <h3 className="text-lg font-semibold mb-4">Scene Narration</h3>
+        <VoiceCustomizer
+          text={currentSection.content}
+          onGenerate={(url) => {
+            setNarrationUrl(url);
+            setNarrationError(null);
+          }}
+          onError={(error) => {
+            setNarrationError(error);
+            setNarrationUrl(null);
+          }}
+        />
+        {narrationError && (
+          <div className="mt-4 p-4 bg-red-50 text-red-700 rounded-lg">
+            {narrationError}
           </div>
         )}
       </div>
@@ -308,6 +359,21 @@ export default function SceneEditorPage() {
           </div>
         </div>
       </div>
+
+      {currentSection && (
+        <div className="mt-6">
+          <h3 className="mb-4 text-lg font-semibold">Scene Transition</h3>
+          <TransitionSelector
+            onTransitionSelect={handleTransitionChange}
+            initialConfig={currentTransition || undefined}
+            sceneMetadata={{
+              pace: currentSection.content.length > 200 ? "slow" : "fast",
+              mood: "neutral", // You can customize this based on content analysis
+              contentType: "dialogue", // You can customize this based on scene type
+            }}
+          />
+        </div>
+      )}
 
       {error && (
         <div className="bg-red-50 text-red-700 p-4 rounded-lg">{error}</div>
