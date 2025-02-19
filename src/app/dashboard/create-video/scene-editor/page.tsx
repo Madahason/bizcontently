@@ -5,8 +5,13 @@ import { useSearchParams } from "next/navigation";
 import { AssetMatchingService } from "@/lib/video/assetMatching/AssetMatchingService";
 import type { Scene } from "@/lib/ai/scriptAnalysis";
 import type { AssetSearchResult } from "@/lib/video/assetMatching/types";
+import type {
+  TransitionConfig,
+  SceneTransitionMetadata,
+} from "@/lib/video/transitions/types";
 import VoiceCustomizer from "@/app/components/narration/VoiceCustomizer";
 import TransitionSelector from "@/app/components/transitions/TransitionSelector";
+import Link from "next/link";
 
 interface SceneAssets {
   suggested: AssetSearchResult[];
@@ -16,6 +21,117 @@ interface SceneAssets {
 interface SceneEditorState {
   [sceneIndex: number]: SceneAssets;
 }
+
+const editorTools = [
+  {
+    name: "Story",
+    icon: (
+      <svg
+        className="w-6 h-6"
+        fill="none"
+        viewBox="0 0 24 24"
+        stroke="currentColor"
+      >
+        <path
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth={2}
+          d="M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v1m2 13a2 2 0 01-2-2V7m2 13a2 2 0 002-2V9.5a2.5 2.5 0 00-2.5-2.5H14"
+        />
+      </svg>
+    ),
+  },
+  {
+    name: "Visuals",
+    icon: (
+      <svg
+        className="w-6 h-6"
+        fill="none"
+        viewBox="0 0 24 24"
+        stroke="currentColor"
+      >
+        <path
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth={2}
+          d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
+        />
+      </svg>
+    ),
+  },
+  {
+    name: "Audio",
+    icon: (
+      <svg
+        className="w-6 h-6"
+        fill="none"
+        viewBox="0 0 24 24"
+        stroke="currentColor"
+      >
+        <path
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth={2}
+          d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15.536a5 5 0 001.414 1.414m2.828-9.9a9 9 0 012.828-2.828"
+        />
+      </svg>
+    ),
+  },
+  {
+    name: "Styles",
+    icon: (
+      <svg
+        className="w-6 h-6"
+        fill="none"
+        viewBox="0 0 24 24"
+        stroke="currentColor"
+      >
+        <path
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth={2}
+          d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01"
+        />
+      </svg>
+    ),
+  },
+  {
+    name: "Text",
+    icon: (
+      <svg
+        className="w-6 h-6"
+        fill="none"
+        viewBox="0 0 24 24"
+        stroke="currentColor"
+      >
+        <path
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth={2}
+          d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+        />
+      </svg>
+    ),
+  },
+  {
+    name: "Branding",
+    icon: (
+      <svg
+        className="w-6 h-6"
+        fill="none"
+        viewBox="0 0 24 24"
+        stroke="currentColor"
+      >
+        <path
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth={2}
+          d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"
+        />
+      </svg>
+    ),
+  },
+];
 
 export default function SceneEditorPage() {
   const searchParams = useSearchParams();
@@ -176,12 +292,10 @@ export default function SceneEditorPage() {
     return (
       <div className="flex h-[60vh] items-center justify-center">
         <div className="text-center">
-          <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
+          <h2 className="text-xl font-semibold text-gray-900">
             No Script Found
           </h2>
-          <p className="mt-2 text-gray-600 dark:text-gray-400">
-            Please generate a script first.
-          </p>
+          <p className="mt-2 text-gray-600">Please generate a script first.</p>
         </div>
       </div>
     );
@@ -189,195 +303,301 @@ export default function SceneEditorPage() {
 
   const currentSection = script.sections[currentScene];
   const currentAssets = sceneAssets[currentScene];
+  const totalDuration = "5m 13s"; // This should be calculated from all scenes
+  const currentSceneDuration = "13.5s"; // This should be calculated from current scene
 
   return (
-    <div className="space-y-8 p-6 pt-40">
-      <div className="flex justify-between items-center">
-        <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
-          Scene {currentScene + 1} of {script.sections.length}
-        </h1>
-        <div className="flex space-x-4">
+    <div className="flex h-screen bg-[#111827]">
+      {/* Left Sidebar */}
+      <div className="fixed left-0 top-0 h-screen w-20 bg-[#111827] flex flex-col items-center py-4 space-y-8 z-10 border-r border-gray-700">
+        {editorTools.map((tool) => (
           <button
-            onClick={() => {
-              if (currentScene > 0) {
-                setCurrentScene((prev) => prev - 1);
-                loadAssetsForScene(currentScene - 1, script);
-              }
-            }}
-            disabled={currentScene === 0}
-            className="px-4 py-2 bg-gray-200 text-gray-800 rounded disabled:opacity-50"
+            key={tool.name}
+            className="p-3 text-gray-400 hover:text-white hover:bg-[#1F2937] rounded-lg transition-colors"
+            title={tool.name}
           >
-            Previous Scene
+            {tool.icon}
           </button>
-          <button
-            onClick={() => {
-              if (currentScene < script.sections.length - 1) {
-                setCurrentScene((prev) => prev + 1);
-                loadAssetsForScene(currentScene + 1, script);
-              }
-            }}
-            disabled={currentScene === script.sections.length - 1}
-            className="px-4 py-2 bg-blue-600 text-white rounded disabled:opacity-50"
-          >
-            Next Scene
-          </button>
-        </div>
+        ))}
       </div>
 
-      {/* Scene Content */}
-      <div className="bg-white dark:bg-gray-800 rounded-lg p-6 shadow-sm">
-        <h2 className="text-lg font-semibold mb-4">{currentSection.type}</h2>
-        <p className="text-gray-600 dark:text-gray-400 mb-4">
-          {currentSection.content}
-        </p>
-        {currentSection.scene && (
-          <div className="flex flex-wrap gap-2">
-            {currentSection.scene.keywords.map((keyword: string, i: number) => (
-              <span
-                key={i}
-                className="px-2 py-1 bg-purple-100 text-purple-800 rounded-full text-sm"
+      {/* Main Content */}
+      <div className="flex-1 flex flex-col pl-20">
+        {/* Top Bar */}
+        <div className="h-16 bg-[#111827] border-b border-gray-700 flex items-center justify-between px-8">
+          <div className="flex items-center space-x-8">
+            <h1 className="text-xl font-semibold text-gray-200">Project</h1>
+            <div className="relative">
+              <input
+                type="text"
+                placeholder="Search..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-10 pr-4 py-2 bg-[#1F2937] border border-gray-700 rounded-lg w-72 focus:outline-none focus:ring-2 focus:ring-purple-500 text-gray-200 placeholder-gray-400"
+              />
+              <svg
+                className="w-5 h-5 text-gray-400 absolute left-3 top-2.5"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
               >
-                {keyword}
-              </span>
-            ))}
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                />
+              </svg>
+            </div>
           </div>
-        )}
-      </div>
-
-      {/* Voice Narration */}
-      <div className="bg-white dark:bg-gray-800 rounded-lg p-6 shadow-sm">
-        <h3 className="text-lg font-semibold mb-4">Scene Narration</h3>
-        <VoiceCustomizer
-          text={currentSection.content}
-          onGenerate={(url) => {
-            setNarrationUrl(url);
-            setNarrationError(null);
-          }}
-          onError={(error) => {
-            setNarrationError(error);
-            setNarrationUrl(null);
-          }}
-        />
-        {narrationError && (
-          <div className="mt-4 p-4 bg-red-50 text-red-700 rounded-lg">
-            {narrationError}
-          </div>
-        )}
-      </div>
-
-      {/* Asset Selection */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Suggested Assets */}
-        <div className="bg-white dark:bg-gray-800 rounded-lg p-6 shadow-sm">
-          <h3 className="text-lg font-semibold mb-4">Suggested Assets</h3>
-          <div className="grid grid-cols-2 gap-4">
-            {currentAssets?.suggested.map((asset) => (
-              <div
-                key={asset.url}
-                className={`relative rounded-lg overflow-hidden cursor-pointer ${
-                  currentAssets.selected?.url === asset.url
-                    ? "ring-2 ring-blue-500"
-                    : ""
-                }`}
-                onClick={() => selectAsset(asset)}
-              >
-                {asset.type === "video" ? (
-                  <video
-                    src={asset.url}
-                    className="w-full h-32 object-cover"
-                    muted
-                    loop
-                    onMouseOver={(e) => (e.target as HTMLVideoElement).play()}
-                    onMouseOut={(e) => (e.target as HTMLVideoElement).pause()}
-                  />
-                ) : (
-                  <img
-                    src={asset.thumbnailUrl}
-                    alt={asset.metadata.title}
-                    className="w-full h-32 object-cover"
-                  />
-                )}
-                <div className="absolute bottom-0 left-0 right-0 bg-black bg-opacity-50 text-white text-xs p-2">
-                  {asset.metadata.title}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Asset Search */}
-        <div className="bg-white dark:bg-gray-800 rounded-lg p-6 shadow-sm">
-          <h3 className="text-lg font-semibold mb-4">
-            Search Replacement Assets
-          </h3>
-          <div className="flex space-x-2 mb-4">
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search for assets..."
-              className="flex-1 px-4 py-2 border rounded-lg"
-              onKeyPress={(e) => e.key === "Enter" && handleSearch()}
-            />
-            <button
-              onClick={handleSearch}
-              disabled={isLoading}
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg disabled:opacity-50"
-            >
-              Search
+          <div className="flex items-center space-x-5">
+            <button className="px-5 py-2 text-purple-400 border-2 border-purple-500 rounded-lg hover:bg-purple-600 hover:text-white transition-colors">
+              Previous
+            </button>
+            <button className="px-5 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors">
+              Preview video
+            </button>
+            <button className="px-5 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors">
+              Download
             </button>
           </div>
+        </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            {searchResults.map((asset) => (
-              <div
-                key={asset.url}
-                className="relative rounded-lg overflow-hidden cursor-pointer"
-                onClick={() => selectAsset(asset)}
+        {/* Scene Info Bar */}
+        <div className="h-14 bg-[#111827] border-b border-gray-700 flex items-center justify-between px-8">
+          <div className="flex items-center space-x-8">
+            <div className="flex items-center space-x-2">
+              <svg
+                className="w-5 h-5 text-gray-400"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
               >
-                {asset.type === "video" ? (
-                  <video
-                    src={asset.url}
-                    className="w-full h-32 object-cover"
-                    muted
-                    loop
-                    onMouseOver={(e) => (e.target as HTMLVideoElement).play()}
-                    onMouseOut={(e) => (e.target as HTMLVideoElement).pause()}
-                  />
-                ) : (
-                  <img
-                    src={asset.thumbnailUrl}
-                    alt={asset.metadata.title}
-                    className="w-full h-32 object-cover"
-                  />
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
+                />
+              </svg>
+              <span className="text-sm text-gray-400">
+                Scene duration: {currentSceneDuration}
+              </span>
+            </div>
+          </div>
+          <div className="flex items-center space-x-8">
+            <div className="flex items-center space-x-3">
+              <span className="text-sm text-gray-400">
+                Video duration: {totalDuration}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* Main Editor Area */}
+        <div className="flex-1 p-8 flex space-x-8">
+          {/* Left Column - Text Editor */}
+          <div className="w-1/2 bg-[#1F2937] rounded-lg shadow-sm p-6">
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-200 mb-2">
+                Scene {currentScene + 1} Content
+              </label>
+              <textarea
+                value={currentSection?.content || ""}
+                onChange={(e) => {
+                  const updatedScript = {
+                    ...script,
+                    sections: {
+                      ...script.sections,
+                      [currentScene]: {
+                        ...currentSection,
+                        content: e.target.value,
+                      },
+                    },
+                  };
+                  setScript(updatedScript);
+                }}
+                className="w-full h-[calc(100vh-400px)] p-4 bg-[#111827] text-gray-200 border border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 resize-none"
+                placeholder="Enter scene content..."
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-200 mb-2">
+                Scene Keywords
+              </label>
+              <div className="space-y-2">
+                {currentSection?.scene?.keywords?.map(
+                  (keyword: string, index: number) => (
+                    <div
+                      key={index}
+                      className="inline-block mr-2 mb-2 px-3 py-1 bg-[#111827] text-gray-200 rounded-full text-sm"
+                    >
+                      {keyword}
+                    </div>
+                  )
                 )}
-                <div className="absolute bottom-0 left-0 right-0 bg-black bg-opacity-50 text-white text-xs p-2">
-                  {asset.metadata.title}
-                </div>
               </div>
-            ))}
+            </div>
+          </div>
+
+          {/* Right Column - Preview */}
+          <div className="w-1/2 bg-[#1F2937] rounded-lg shadow-sm p-6">
+            <div className="aspect-video bg-[#111827] rounded-lg overflow-hidden relative">
+              {currentAssets?.selected ? (
+                <img
+                  src={currentAssets.selected.url}
+                  alt="Selected scene asset"
+                  className="w-full h-full object-contain"
+                />
+              ) : (
+                <div className="absolute inset-0 flex flex-col items-center justify-center">
+                  <div className="w-16 h-16 bg-purple-600/10 rounded-full flex items-center justify-center mb-4">
+                    <svg
+                      className="w-8 h-8 text-purple-600"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"
+                      />
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                      />
+                    </svg>
+                  </div>
+                  <div className="flex space-x-4">
+                    <button className="p-2 text-white/80 hover:text-white">
+                      <svg
+                        className="w-6 h-6"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M12.066 11.2a1 1 0 000 1.6l5.334 4A1 1 0 0019 16V8a1 1 0 00-1.6-.8l-5.333 4zM4.066 11.2a1 1 0 000 1.6l5.334 4A1 1 0 0011 16V8a1 1 0 00-1.6-.8l-5.334 4z"
+                        />
+                      </svg>
+                    </button>
+                    <button className="p-2 text-white/80 hover:text-white">
+                      <svg
+                        className="w-8 h-8"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"
+                        />
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                        />
+                      </svg>
+                    </button>
+                    <button className="p-2 text-white/80 hover:text-white">
+                      <svg
+                        className="w-6 h-6"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M11.933 12.8a1 1 0 000-1.6L6.6 7.2A1 1 0 005 8v8a1 1 0 001.6.8l5.334-4zm8 0a1 1 0 000-1.6L14.6 7.2A1 1 0 0013 8v8a1 1 0 001.6.8l5.334-4z"
+                        />
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+              )}
+              <div className="absolute bottom-0 left-0 right-0 h-1.5 bg-gray-800">
+                <div className="h-full w-1/3 bg-purple-600 rounded-full"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Bottom Timeline */}
+        <div className="h-36 bg-[#1F2937] border-t border-gray-700 p-6">
+          <div className="flex items-center space-x-6 h-full">
+            <button className="p-2 rounded-lg hover:bg-gray-100 transition-colors">
+              <svg
+                className="w-6 h-6 text-gray-600"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M15 19l-7-7 7-7"
+                />
+              </svg>
+            </button>
+            <div className="flex-1 flex space-x-4 overflow-x-auto py-2">
+              {script.sections.map((section: any, index: number) => (
+                <button
+                  key={index}
+                  onClick={() => setCurrentScene(index)}
+                  className={`flex-shrink-0 w-44 h-full rounded-lg border-2 ${
+                    currentScene === index
+                      ? "border-purple-600"
+                      : "border-gray-700"
+                  } overflow-hidden relative group hover:border-purple-600 transition-colors`}
+                >
+                  {sceneAssets[index]?.selected ? (
+                    <img
+                      src={sceneAssets[index].selected.url}
+                      alt={`Scene ${index + 1}`}
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <div className="w-full h-full bg-[#111827] flex items-center justify-center">
+                      <span className="text-gray-400">Scene {index + 1}</span>
+                    </div>
+                  )}
+                  <div className="absolute bottom-0 left-0 right-0 bg-black/50 text-white text-xs py-1.5 px-3">
+                    Scene {index + 1}
+                  </div>
+                </button>
+              ))}
+            </div>
+            <button className="p-2 rounded-lg hover:bg-gray-100 transition-colors">
+              <svg
+                className="w-6 h-6 text-gray-600"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M9 5l7 7-7 7"
+                />
+              </svg>
+            </button>
           </div>
         </div>
       </div>
-
-      {currentSection && (
-        <div className="mt-6">
-          <h3 className="mb-4 text-lg font-semibold">Scene Transition</h3>
-          <TransitionSelector
-            onTransitionSelect={handleTransitionChange}
-            initialConfig={currentTransition || undefined}
-            sceneMetadata={{
-              pace: currentSection.content.length > 200 ? "slow" : "fast",
-              mood: "neutral", // You can customize this based on content analysis
-              contentType: "dialogue", // You can customize this based on scene type
-            }}
-          />
-        </div>
-      )}
-
-      {error && (
-        <div className="bg-red-50 text-red-700 p-4 rounded-lg">{error}</div>
-      )}
     </div>
   );
 }

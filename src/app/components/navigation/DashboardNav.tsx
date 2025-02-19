@@ -1,12 +1,6 @@
-"use client";
-
-import { useAuth } from "@/lib/contexts/AuthContext";
-import { useRouter } from "next/navigation";
-import { useEffect } from "react";
 import Link from "next/link";
-import DashboardNav from "@/app/components/navigation/DashboardNav";
 
-const sidebarItems = [
+export const navItems = [
   {
     name: "Keyword Research",
     icon: (
@@ -167,64 +161,19 @@ const sidebarItems = [
   },
 ];
 
-export default function DashboardLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
-  const { user } = useAuth();
-  const router = useRouter();
-
-  useEffect(() => {
-    if (!user) {
-      router.push("/auth");
-    }
-  }, [user, router]);
-
-  if (!user) {
-    return null;
-  }
-
+export default function DashboardNav() {
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
-      {/* Top Navigation Bar */}
-      <div className="h-16 bg-white border-b border-gray-200 flex items-center justify-between px-8 fixed top-0 left-0 right-0 z-50">
-        <div className="flex items-center space-x-8">
-          {/* Logo */}
-          <Link
-            href="/"
-            className="text-xl font-bold text-purple-600 dark:text-purple-400"
-          >
-            BizContently
-          </Link>
-
-          {/* Navigation */}
-          <DashboardNav />
-        </div>
-
-        {/* User Profile */}
-        <div className="flex items-center">
-          <div className="flex-shrink-0">
-            <div className="h-8 w-8 rounded-full bg-purple-100 dark:bg-purple-900/30">
-              <div className="flex h-full w-full items-center justify-center">
-                <span className="text-sm font-medium text-purple-600 dark:text-purple-400">
-                  {user.email?.[0].toUpperCase()}
-                </span>
-              </div>
-            </div>
-          </div>
-          <div className="ml-3">
-            <p className="text-sm font-medium text-gray-700 dark:text-gray-200">
-              {user.email}
-            </p>
-          </div>
-        </div>
-      </div>
-
-      {/* Main Content */}
-      <main className="pt-16">
-        <div className="container mx-auto px-4 py-8">{children}</div>
-      </main>
-    </div>
+    <nav className="flex items-center space-x-6">
+      {navItems.map((item) => (
+        <Link
+          key={item.name}
+          href={item.href}
+          className="flex items-center space-x-2 p-2 hover:bg-gray-100 rounded-lg transition-colors"
+        >
+          <div className="text-gray-600">{item.icon}</div>
+          <span className="text-sm text-gray-600">{item.name}</span>
+        </Link>
+      ))}
+    </nav>
   );
 }
