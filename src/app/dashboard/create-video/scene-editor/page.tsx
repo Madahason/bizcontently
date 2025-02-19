@@ -135,7 +135,18 @@ const editorTools = [
 
 export default function SceneEditorPage() {
   const searchParams = useSearchParams();
-  const [script, setScript] = useState<any>(null);
+  const [script, setScript] = useState<{
+    title: string;
+    scenes: {
+      content: string;
+      keywords?: string[];
+      visualStyle?: {
+        lighting?: string;
+        mood?: string;
+      };
+      transition?: TransitionConfig;
+    }[];
+  } | null>(null);
   const [currentScene, setCurrentScene] = useState(0);
   const [sceneAssets, setSceneAssets] = useState<SceneEditorState>({});
   const [isLoading, setIsLoading] = useState(false);
@@ -154,8 +165,24 @@ export default function SceneEditorPage() {
     if (scriptParam) {
       try {
         const decodedScript = JSON.parse(decodeURIComponent(scriptParam));
-        setScript(decodedScript);
-        loadAssetsForScene(0, decodedScript);
+        // Transform the script data to match our expected structure
+        const formattedScript = {
+          title: decodedScript.title || "Untitled Project",
+          scenes: Array.isArray(decodedScript.sections)
+            ? decodedScript.sections.map((section: any) => ({
+                content: section.content || "",
+                keywords: section.scene?.keywords || [],
+                visualStyle: {
+                  lighting: section.scene?.visualStyle?.lighting || "natural",
+                  mood: section.scene?.sentiment?.mood || "neutral",
+                },
+                transition: section.transition || null,
+              }))
+            : [],
+        };
+        setScript(formattedScript);
+        // Load assets for the first scene
+        loadAssetsForScene(0, formattedScript);
       } catch (err) {
         console.error("Failed to parse script:", err);
         setError("Failed to load script data");
@@ -164,33 +191,34 @@ export default function SceneEditorPage() {
   }, [searchParams]);
 
   useEffect(() => {
-    if (script?.sections?.[currentScene]?.transition) {
-      setCurrentTransition(script.sections[currentScene].transition);
+    if (script?.scenes?.[currentScene]?.transition) {
+      setCurrentTransition(script.scenes[currentScene].transition);
     }
   }, [script, currentScene]);
 
   const loadAssetsForScene = async (sceneIndex: number, scriptData: any) => {
-    if (!scriptData?.sections?.[sceneIndex]) return;
+    if (!scriptData?.scenes?.[sceneIndex]) return;
 
     setIsLoading(true);
     try {
-      const section = scriptData.sections[sceneIndex];
+      const scene = scriptData.scenes[sceneIndex];
 
       // Only fetch if we haven't already loaded assets for this scene
       if (!sceneAssets[sceneIndex]) {
         let searchCriteria;
 
-        if (section.scene) {
+        if (scene.visualStyle) {
           // Use existing scene analysis
           searchCriteria = {
-            style: section.scene.visualStyle.lighting,
-            mood: section.scene.sentiment.mood,
-            elements: section.scene.keywords.map((keyword: string) => ({
-              type: "object",
-              description: keyword,
-              importance: 1,
-              attributes: {},
-            })),
+            style: scene.visualStyle.lighting || "natural",
+            mood: scene.visualStyle.mood || "neutral",
+            elements:
+              scene.keywords?.map((keyword: string) => ({
+                type: "object",
+                description: keyword,
+                importance: 1,
+                attributes: {},
+              })) || [],
           };
         } else {
           // Get new scene analysis
@@ -201,7 +229,7 @@ export default function SceneEditorPage() {
                 "Content-Type": "application/json",
               },
               body: JSON.stringify({
-                sceneDescription: section.content,
+                sceneDescription: scene.content,
               }),
             });
 
@@ -214,14 +242,14 @@ export default function SceneEditorPage() {
             console.error("Scene analysis failed:", err);
             // Fallback to basic search if analysis fails
             searchCriteria = {
-              sceneDescription: section.content,
+              sceneDescription: scene.content,
             };
           }
         }
 
         // Search for assets using the criteria
         const assets = await assetMatcher.findAssets(
-          section.content,
+          scene.content,
           searchCriteria
         );
 
@@ -270,50 +298,112 @@ export default function SceneEditorPage() {
     setSearchQuery("");
   };
 
-  const handleTransitionChange = (config: TransitionConfig) => {
-    setCurrentTransition(config);
-    if (script?.sections?.[currentScene]) {
-      const updatedSection = {
-        ...script.sections[currentScene],
-        transition: config,
-      };
-      const updatedScript = {
-        ...script,
-        sections: {
-          ...script.sections,
-          [currentScene]: updatedSection,
+  const handleSceneChange = (newIndex: number) => {
+    if (script && newIndex >= 0 && newIndex < script.scenes.length) {
+      setCurrentScene(newIndex);
+      loadAssetsForScene(newIndex, script);
+    }
+  };
+
+  const updateSceneContent = (content: string) => {
+    if (!script) return;
+
+    const updatedScenes = [...script.scenes];
+    updatedScenes[currentScene] = {
+      ...updatedScenes[currentScene],
+      content,
+    };
+
+    setScript({
+      ...script,
+      scenes: updatedScenes,
+    });
+  };
+
+  // Update the getCompleteScript function to format with empty lines as scene separators
+  const getCompleteScript = () => {
+    if (!script?.scenes) return "";
+    return script.scenes.map((scene) => scene.content).join("\n\n");
+  };
+
+  // Add new function to handle script updates
+  const handleScriptChange = (newContent: string) => {
+    if (!script) return;
+
+    // Split content by double newlines to get scenes
+    const sceneContents = newContent
+      .split(/\n\s*\n/)
+      .map((content) => content.trim())
+      .filter((content) => content.length > 0);
+
+    // Create new scenes array with existing metadata
+    const updatedScenes = sceneContents.map((content, index) => {
+      const existingScene = script.scenes[index] || {
+        keywords: [],
+        visualStyle: {
+          lighting: "natural",
+          mood: "neutral",
         },
       };
-      setScript(updatedScript);
+
+      return {
+        ...existingScene,
+        content,
+      };
+    });
+
+    setScript({
+      ...script,
+      scenes: updatedScenes,
+    });
+
+    // If current scene index is out of bounds, update it
+    if (currentScene >= updatedScenes.length) {
+      setCurrentScene(Math.max(0, updatedScenes.length - 1));
     }
+
+    // Load assets for the current scene if needed
+    loadAssetsForScene(currentScene, { ...script, scenes: updatedScenes });
   };
 
   if (!script) {
     return (
       <div className="flex h-[60vh] items-center justify-center">
         <div className="text-center">
-          <h2 className="text-xl font-semibold text-gray-900">
+          <h2 className="text-xl font-semibold text-gray-200">
             No Script Found
           </h2>
-          <p className="mt-2 text-gray-600">Please generate a script first.</p>
+          <p className="mt-2 text-gray-400">Please generate a script first.</p>
+          <Link
+            href="/dashboard/create-video"
+            className="mt-4 inline-block px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
+          >
+            Create New Video
+          </Link>
         </div>
       </div>
     );
   }
 
-  const currentSection = script.sections[currentScene];
-  const currentAssets = sceneAssets[currentScene];
+  const currentSceneData = script?.scenes?.[currentScene] || {
+    content: "",
+    keywords: [],
+    visualStyle: {
+      lighting: "natural",
+      mood: "neutral",
+    },
+  };
   const totalDuration = "5m 13s"; // This should be calculated from all scenes
   const currentSceneDuration = "13.5s"; // This should be calculated from current scene
 
   return (
-    <div className="flex h-screen bg-[#111827]">
+    <div className="h-screen overflow-hidden bg-[#111827]">
       {/* Left Sidebar */}
-      <div className="fixed left-0 top-0 h-screen w-20 bg-[#111827] flex flex-col items-center py-4 space-y-8 z-10 border-r border-gray-700">
+      <div className="fixed left-0 top-0 h-screen w-16 bg-[#111827] flex flex-col items-center py-4 space-y-8 z-10 border-r border-gray-700">
         {editorTools.map((tool) => (
           <button
             key={tool.name}
-            className="p-3 text-gray-400 hover:text-white hover:bg-[#1F2937] rounded-lg transition-colors"
+            className="p-2.5 text-gray-400 hover:text-white hover:bg-[#1F2937] rounded-lg transition-colors"
             title={tool.name}
           >
             {tool.icon}
@@ -322,18 +412,17 @@ export default function SceneEditorPage() {
       </div>
 
       {/* Main Content */}
-      <div className="flex-1 flex flex-col pl-20">
+      <div className="flex flex-col pl-16 h-screen">
         {/* Top Bar */}
-        <div className="h-16 bg-[#111827] border-b border-gray-700 flex items-center justify-between px-8">
-          <div className="flex items-center space-x-8">
-            <h1 className="text-xl font-semibold text-gray-200">Project</h1>
+        <div className="h-16 bg-[#111827] border-b border-gray-700 flex items-center justify-between px-6">
+          <div className="flex items-center space-x-6">
             <div className="relative">
               <input
                 type="text"
                 placeholder="Search..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-10 pr-4 py-2 bg-[#1F2937] border border-gray-700 rounded-lg w-72 focus:outline-none focus:ring-2 focus:ring-purple-500 text-gray-200 placeholder-gray-400"
+                className="pl-10 pr-4 py-2 bg-[#1F2937] border border-gray-700 rounded-lg w-64 focus:outline-none focus:ring-2 focus:ring-purple-500 text-gray-200 placeholder-gray-400"
               />
               <svg
                 className="w-5 h-5 text-gray-400 absolute left-3 top-2.5"
@@ -350,38 +439,25 @@ export default function SceneEditorPage() {
               </svg>
             </div>
           </div>
-          <div className="flex items-center space-x-5">
-            <button className="px-5 py-2 text-purple-400 border-2 border-purple-500 rounded-lg hover:bg-purple-600 hover:text-white transition-colors">
+          <div className="flex items-center space-x-4">
+            <button className="px-4 py-2 text-purple-400 border-2 border-purple-500 rounded-lg hover:bg-purple-600 hover:text-white transition-colors">
               Previous
             </button>
-            <button className="px-5 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors">
+            <button className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors">
               Preview video
             </button>
-            <button className="px-5 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors">
+            <button className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors">
               Download
             </button>
           </div>
         </div>
 
         {/* Scene Info Bar */}
-        <div className="h-14 bg-[#111827] border-b border-gray-700 flex items-center justify-between px-8">
+        <div className="h-14 bg-[#111827] border-b border-gray-700 flex items-center justify-between px-6">
           <div className="flex items-center space-x-8">
             <div className="flex items-center space-x-2">
-              <svg
-                className="w-5 h-5 text-gray-400"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
-                />
-              </svg>
               <span className="text-sm text-gray-400">
-                Scene duration: {currentSceneDuration}
+                Scene {currentScene + 1} of {script.scenes.length}
               </span>
             </div>
           </div>
@@ -395,57 +471,51 @@ export default function SceneEditorPage() {
         </div>
 
         {/* Main Editor Area */}
-        <div className="flex-1 p-8 flex space-x-8">
+        <div className="flex-1 p-6 flex space-x-6 overflow-hidden">
           {/* Left Column - Text Editor */}
-          <div className="w-1/2 bg-[#1F2937] rounded-lg shadow-sm p-6">
-            <div className="mb-4">
+          <div className="w-1/2 bg-[#1F2937] rounded-lg shadow-sm p-4 flex flex-col">
+            <div className="flex-1 overflow-hidden">
               <label className="block text-sm font-medium text-gray-200 mb-2">
-                Scene {currentScene + 1} Content
+                Complete Script (Separate scenes with empty lines)
               </label>
               <textarea
-                value={currentSection?.content || ""}
-                onChange={(e) => {
-                  const updatedScript = {
-                    ...script,
-                    sections: {
-                      ...script.sections,
-                      [currentScene]: {
-                        ...currentSection,
-                        content: e.target.value,
-                      },
-                    },
-                  };
-                  setScript(updatedScript);
-                }}
-                className="w-full h-[calc(100vh-400px)] p-4 bg-[#111827] text-gray-200 border border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 resize-none"
-                placeholder="Enter scene content..."
+                value={getCompleteScript()}
+                onChange={(e) => handleScriptChange(e.target.value)}
+                className="w-full h-[calc(100vh-380px)] p-4 bg-[#111827] text-gray-200 border border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 resize-none font-mono text-sm"
+                placeholder="Enter your script here...&#10;&#10;Separate scenes with empty lines..."
               />
             </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-200 mb-2">
-                Scene Keywords
-              </label>
-              <div className="space-y-2">
-                {currentSection?.scene?.keywords?.map(
-                  (keyword: string, index: number) => (
-                    <div
-                      key={index}
-                      className="inline-block mr-2 mb-2 px-3 py-1 bg-[#111827] text-gray-200 rounded-full text-sm"
-                    >
-                      {keyword}
-                    </div>
-                  )
-                )}
+            <div className="flex items-center justify-between mt-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-200 mb-2">
+                  Current Scene Keywords
+                </label>
+                <div className="space-y-2">
+                  {currentSceneData.keywords?.map(
+                    (keyword: string, index: number) => (
+                      <div
+                        key={index}
+                        className="inline-block mr-2 mb-2 px-3 py-1 bg-[#111827] text-gray-200 rounded-full text-sm"
+                      >
+                        {keyword}
+                      </div>
+                    )
+                  )}
+                </div>
+              </div>
+              <div className="text-sm text-gray-400">
+                {script.scenes.length}{" "}
+                {script.scenes.length === 1 ? "Scene" : "Scenes"}
               </div>
             </div>
           </div>
 
           {/* Right Column - Preview */}
-          <div className="w-1/2 bg-[#1F2937] rounded-lg shadow-sm p-6">
+          <div className="w-1/2 bg-[#1F2937] rounded-lg shadow-sm p-4 flex flex-col">
             <div className="aspect-video bg-[#111827] rounded-lg overflow-hidden relative">
-              {currentAssets?.selected ? (
+              {sceneAssets[currentScene]?.selected ? (
                 <img
-                  src={currentAssets.selected.url}
+                  src={sceneAssets[currentScene].selected.url}
                   alt="Selected scene asset"
                   className="w-full h-full object-contain"
                 />
@@ -535,11 +605,19 @@ export default function SceneEditorPage() {
         </div>
 
         {/* Bottom Timeline */}
-        <div className="h-36 bg-[#1F2937] border-t border-gray-700 p-6">
-          <div className="flex items-center space-x-6 h-full">
-            <button className="p-2 rounded-lg hover:bg-gray-100 transition-colors">
+        <div className="h-32 bg-[#1F2937] border-t border-gray-700 p-4">
+          <div className="flex items-center space-x-4 h-full">
+            <button
+              onClick={() => handleSceneChange(currentScene - 1)}
+              disabled={currentScene === 0}
+              className={`p-2 rounded-lg transition-colors ${
+                currentScene === 0
+                  ? "text-gray-600"
+                  : "text-gray-400 hover:text-white hover:bg-[#111827]"
+              }`}
+            >
               <svg
-                className="w-6 h-6 text-gray-600"
+                className="w-6 h-6"
                 fill="none"
                 viewBox="0 0 24 24"
                 stroke="currentColor"
@@ -552,12 +630,12 @@ export default function SceneEditorPage() {
                 />
               </svg>
             </button>
-            <div className="flex-1 flex space-x-4 overflow-x-auto py-2">
-              {script.sections.map((section: any, index: number) => (
+            <div className="flex-1 flex space-x-3 overflow-x-auto py-2 px-1">
+              {script.scenes.map((scene, index) => (
                 <button
                   key={index}
-                  onClick={() => setCurrentScene(index)}
-                  className={`flex-shrink-0 w-44 h-full rounded-lg border-2 ${
+                  onClick={() => handleSceneChange(index)}
+                  className={`flex-shrink-0 w-40 h-full rounded-lg border-2 ${
                     currentScene === index
                       ? "border-purple-600"
                       : "border-gray-700"
@@ -580,9 +658,17 @@ export default function SceneEditorPage() {
                 </button>
               ))}
             </div>
-            <button className="p-2 rounded-lg hover:bg-gray-100 transition-colors">
+            <button
+              onClick={() => handleSceneChange(currentScene + 1)}
+              disabled={currentScene === script.scenes.length - 1}
+              className={`p-2 rounded-lg transition-colors ${
+                currentScene === script.scenes.length - 1
+                  ? "text-gray-600"
+                  : "text-gray-400 hover:text-white hover:bg-[#111827]"
+              }`}
+            >
               <svg
-                className="w-6 h-6 text-gray-600"
+                className="w-6 h-6"
                 fill="none"
                 viewBox="0 0 24 24"
                 stroke="currentColor"
